@@ -1,7 +1,3 @@
-# Create the combined README content and export it as a Markdown file using pypandoc
-import pypandoc
-
-content = """
 # JudgeIntel — Hackathon Intelligence Platform
 
 **HackCU 2026 Project**
