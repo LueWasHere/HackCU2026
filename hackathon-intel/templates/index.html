@@ -519,6 +519,33 @@ function fmtList(arr, cls='') {
   return arr.map(x => `<p class="text-xs text-[#dce8f5] flex gap-2"><span class="${cls}">›</span>${esc(x)}</p>`).join('');
 }
 
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    if (!/^https?:$/.test(u.protocol)) return '';
+    u.search = '';
+    u.hash = '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
+function validLinkedinProfile(url) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return '';
+  try {
+    const u = new URL(normalized);
+    const host = u.hostname.toLowerCase();
+    const path = u.pathname.toLowerCase();
+    if (!host.includes('linkedin.com')) return '';
+    if (!(path.startsWith('/in/') || path.startsWith('/pub/'))) return '';
+    return normalized;
+  } catch {
+    return '';
+  }
+}
+
 // ── Tab switching ────────────────────────────────────────────────────────
 function showTab(name, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -836,9 +863,12 @@ function renderJudges(judges) {
     const confClass = conf === 'high' ? 'confid-high' : conf === 'low' ? 'confid-low' : 'confid-medium';
 
     const links = [];
-    if (j.linkedin_url) links.push(`<a href="${esc(j.linkedin_url)}" target="_blank" class="chip chip-blue text-[10px]">LinkedIn ↗</a>`);
-    if (j.github_url) links.push(`<a href="${esc(j.github_url)}" target="_blank" class="chip chip-gray text-[10px]">GitHub ↗</a>`);
-    if (j.website_url) links.push(`<a href="${esc(j.website_url)}" target="_blank" class="chip chip-gray text-[10px]">Site ↗</a>`);
+    const linkedin = validLinkedinProfile(j.linkedin_url);
+    const github = normalizeUrl(j.github_url);
+    const website = normalizeUrl(j.website_url);
+    if (linkedin) links.push(`<a href="${esc(linkedin)}" target="_blank" class="chip chip-blue text-[10px]">LinkedIn ↗</a>`);
+    if (github) links.push(`<a href="${esc(github)}" target="_blank" class="chip chip-gray text-[10px]">GitHub ↗</a>`);
+    if (website) links.push(`<a href="${esc(website)}" target="_blank" class="chip chip-gray text-[10px]">Site ↗</a>`);
 
     return `
     <div class="card card-glow rounded-xl overflow-hidden judge-card section-reveal" style="animation-delay:${i*0.05}s">
