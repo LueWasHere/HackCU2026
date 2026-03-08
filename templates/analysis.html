@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Analysis — Win The Hackathon</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:#060b14; --bg2:#0b1220; --bg3:#0f1929;
+      --border:#1a2740; --border2:#243451;
+      --text:#dce8f5; --text2:#7a92b0; --text3:#3d5470;
+      --accent:#00c8a0; --accent2:#00a882;
+      --amber:#f0b429; --red:#f56565; --blue:#4da6ff; --purple:#9b7fe8;
+    }
+    *{box-sizing:border-box;}
+    body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.6;min-height:100vh;overflow-x:hidden;}
+    h1,h2,h3,h4,.font-syne{font-family:'Syne',sans-serif;}
+    .font-serif{font-family:'Instrument Serif',serif;}
+
+    /* ── Card ── */
+    .card{background:rgba(11,18,32,0.7);backdrop-filter:blur(12px);border:1px solid var(--border);transition:border-color 0.3s,transform 0.3s;}
+    .card:hover{border-color:var(--border2);transform:translateY(-1px);}
+    .card-glow:hover{border-color:rgba(0,200,160,0.3);box-shadow:0 0 20px rgba(0,200,160,0.08);}
+
+    /* ── Chips ── */
+    .chip{background:rgba(0,200,160,0.08);border:1px solid rgba(0,200,160,0.2);color:var(--accent);font-size:11px;padding:2px 8px;border-radius:3px;font-family:'JetBrains Mono',monospace;display:inline-block;white-space:nowrap;}
+    .chip-amber{background:rgba(240,180,41,0.08);border-color:rgba(240,180,41,0.2);color:var(--amber);}
+    .chip-red{background:rgba(245,101,101,0.08);border-color:rgba(245,101,101,0.2);color:var(--red);}
+    .chip-blue{background:rgba(77,166,255,0.08);border-color:rgba(77,166,255,0.2);color:var(--blue);}
+    .chip-purple{background:rgba(155,127,232,0.08);border-color:rgba(155,127,232,0.2);color:var(--purple);}
+    .chip-gray{background:rgba(122,146,176,0.08);border-color:rgba(122,146,176,0.2);color:var(--text2);}
+
+    /* ── Buttons ── */
+    .btn-primary{background:linear-gradient(135deg,var(--accent),#00b090);color:#060b14;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:0.05em;text-transform:uppercase;transition:all 0.3s;cursor:pointer;position:relative;overflow:hidden;}
+    .btn-primary:hover{box-shadow:0 4px 20px rgba(0,200,160,0.3);transform:translateY(-1px);}
+    .btn-primary:disabled{opacity:0.4;cursor:not-allowed;transform:none;}
+    .btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--text2);font-family:'JetBrains Mono',monospace;font-size:12px;cursor:pointer;transition:all 0.2s;}
+    .btn-ghost:hover{border-color:var(--accent);color:var(--accent);}
+
+    /* ── Log lines ── */
+    .log-line{border-left:2px solid var(--border);padding-left:12px;margin:3px 0;animation:fadeSlideIn 0.3s ease forwards;opacity:0;}
+    .log-line.success{border-left-color:var(--accent);}
+    .log-line.error{border-left-color:var(--red);}
+    .log-line.info{border-left-color:var(--border2);}
+    @keyframes fadeSlideIn{from{opacity:0;transform:translateX(-8px);}to{opacity:1;transform:translateX(0);}}
+
+    /* ── Tabs ── */
+    .tab-btn{font-family:'Syne',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.04em;padding:8px 16px;border-bottom:2px solid transparent;cursor:pointer;transition:all 0.2s;color:var(--text3);background:transparent;border-top:none;border-left:none;border-right:none;white-space:nowrap;}
+    .tab-btn:hover{color:var(--text2);}
+    .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+    .tab-panel{display:none;}
+    .tab-panel.active{display:block;}
+
+    /* ── Score bar ── */
+    .score-bar{height:4px;border-radius:2px;background:var(--border2);overflow:hidden;}
+    .score-fill{height:100%;border-radius:2px;background:var(--accent);transition:width 1.2s ease;}
+
+    /* ── Rank badge ── */
+    .rank-badge{width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:13px;flex-shrink:0;}
+    .rank-1{background:rgba(240,180,41,0.15);color:var(--amber);border:1px solid rgba(240,180,41,0.3);}
+    .rank-2{background:rgba(122,146,176,0.1);color:var(--text2);border:1px solid var(--border2);}
+    .rank-3{background:rgba(240,140,80,0.1);color:#f09050;border:1px solid rgba(240,140,80,0.3);}
+    .rank-n{background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
+
+    /* ── Judge card ── */
+    .judge-detail{display:none;}
+    .judge-card.open .judge-detail{display:block;}
+    .judge-chevron{transition:transform 0.3s;}
+    .judge-card.open .judge-chevron{transform:rotate(180deg);}
+
+    /* ── Chat ── */
+    .msg-user{background:rgba(0,200,160,0.08);border:1px solid rgba(0,200,160,0.15);border-radius:12px 12px 2px 12px;max-width:80%;margin-left:auto;}
+    .msg-ai{background:var(--bg2);border:1px solid var(--border);border-radius:12px 12px 12px 2px;max-width:85%;}
+    .chat-input{background:var(--bg2);border:1px solid var(--border2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;resize:none;transition:border-color 0.2s;}
+    .chat-input:focus{border-color:var(--accent);}
+
+    /* ── Pulse ── */
+    @keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:0.3;}}
+    .pulse{animation:pulse-dot 1.2s ease infinite;}
+
+    /* ── Section reveal ── */
+    .reveal{animation:sectionIn 0.5s ease forwards;opacity:0;}
+    @keyframes sectionIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+
+    /* ── Stat grid ── */
+    .stat-val{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;}
+
+    /* ── Typing indicator ── */
+    .typing-dot{width:6px;height:6px;border-radius:50%;background:var(--text3);animation:typingPulse 1.4s ease infinite;}
+    .typing-dot:nth-child(2){animation-delay:0.2s;}
+    .typing-dot:nth-child(3){animation-delay:0.4s;}
+    @keyframes typingPulse{0%,80%,100%{transform:scale(0.6);opacity:0.4;}40%{transform:scale(1);opacity:1;}}
+
+    ::-webkit-scrollbar{width:4px;height:4px;}
+    ::-webkit-scrollbar-track{background:var(--bg);}
+    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="fixed top-0 left-0 right-0 z-30" style="border-bottom:1px solid rgba(26,39,64,0.6);background:rgba(6,11,20,0.85);backdrop-filter:blur(20px);">
+  <div class="max-w-7xl mx-auto px-6 h-12 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3 flex-shrink-0">
+      <a href="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+        <div class="w-6 h-6 rounded flex items-center justify-center" style="background:var(--accent)">
+          <span style="color:#060b14;font-size:11px;font-weight:800;font-family:'Syne',sans-serif;">W</span>
+        </div>
+        <span class="font-syne font-bold text-sm tracking-wider" style="color:var(--text)">WIN THE HACKATHON</span>
+      </a>
+    </div>
+    <!-- Tabs in nav (show after complete) -->
+    <div id="nav-tabs" class="hidden flex-1 flex items-end justify-center gap-1 h-full" style="padding-top:4px;">
+      <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+      <button class="tab-btn" onclick="switchTab('judges')">Judges</button>
+      <button class="tab-btn" onclick="switchTab('ideas')">Ideas</button>
+      <button class="tab-btn" onclick="switchTab('chat')">Chat</button>
+    </div>
+    <div class="flex items-center gap-3 flex-shrink-0">
+      <a href="/" class="btn-ghost rounded-lg px-3 h-7 flex items-center text-xs">← New Analysis</a>
+    </div>
+  </div>
+</nav>
+
+<main class="pt-12 min-h-screen">
+
+  <!-- ── PROGRESS PANEL (shown while running) ──────────────────────────── -->
+  <div id="progress-section" class="max-w-3xl mx-auto px-6 py-16">
+
+    <!-- Header -->
+    <div class="mb-8 text-center">
+      <div class="inline-flex items-center gap-2 mb-4 px-3 py-1 rounded-full text-[11px]" style="background:rgba(0,200,160,0.06);border:1px solid rgba(0,200,160,0.15);color:var(--text2);">
+        <span id="status-dot" class="w-1.5 h-1.5 rounded-full pulse inline-block" style="background:var(--accent)"></span>
+        <span id="status-label">Initializing…</span>
+      </div>
+      <h1 class="font-syne font-extrabold text-2xl mb-2" style="color:var(--text)">Analysing Hackathon</h1>
+      <p id="job-url" class="text-xs truncate" style="color:var(--text3)">{{ job.url }}</p>
+    </div>
+
+    <!-- Stats strip (fills as data comes in) -->
+    <div id="stats-strip" class="grid grid-cols-3 gap-3 mb-6">
+      <div class="card rounded-xl p-4 text-center">
+        <div id="stat-judges" class="stat-val" style="color:var(--accent)">—</div>
+        <div class="text-[10px] mt-1" style="color:var(--text3)">JUDGES FOUND</div>
+      </div>
+      <div class="card rounded-xl p-4 text-center">
+        <div id="stat-prizes" class="stat-val" style="color:var(--amber)">—</div>
+        <div class="text-[10px] mt-1" style="color:var(--text3)">PRIZE TRACKS</div>
+      </div>
+      <div class="card rounded-xl p-4 text-center">
+        <div id="stat-ideas" class="stat-val" style="color:var(--purple)">—</div>
+        <div class="text-[10px] mt-1" style="color:var(--text3)">IDEAS GEN'D</div>
+      </div>
+    </div>
+
+    <!-- Progress log -->
+    <div class="card rounded-xl p-5">
+      <div class="flex items-center justify-between mb-4">
+        <span class="font-syne font-bold text-xs tracking-widest uppercase" style="color:var(--text2)">Live Progress</span>
+        <div id="spinner" class="flex gap-1">
+          <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+        </div>
+      </div>
+      <div id="log-container" class="space-y-0 max-h-80 overflow-y-auto" style="font-size:12px;"></div>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-box" class="hidden mt-4 card rounded-xl p-5" style="border-color:rgba(245,101,101,0.3);">
+      <p class="font-syne font-bold text-sm mb-1" style="color:var(--red)">Analysis Failed</p>
+      <p id="error-text" class="text-xs" style="color:var(--text2)"></p>
+      <a href="/" class="inline-block mt-3 btn-ghost rounded-lg px-4 py-1.5 text-xs">← Try Again</a>
+    </div>
+
+  </div>
+
+  <!-- ── RESULTS (hidden until complete) ───────────────────────────────── -->
+  <div id="results-section" class="hidden max-w-7xl mx-auto px-6 pb-20">
+
+    <!-- ── TAB: OVERVIEW ──────────────────────────────────────────── -->
+    <div id="tab-overview" class="tab-panel active pt-8 reveal">
+
+      <!-- Hackathon header -->
+      <div class="mb-8 pb-6" style="border-bottom:1px solid var(--border);">
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 id="ov-name" class="font-syne font-extrabold text-2xl mb-1" style="color:var(--text)"></h2>
+            <p id="ov-dates" class="text-xs mb-3" style="color:var(--text3)"></p>
+            <p id="ov-description" class="text-sm leading-relaxed max-w-2xl" style="color:var(--text2)"></p>
+          </div>
+          <a id="ov-link" href="#" target="_blank" class="btn-ghost rounded-lg px-4 py-2 text-xs flex-shrink-0 flex items-center gap-2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            View Event
+          </a>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left col: prizes + tracks -->
+        <div class="lg:col-span-2 space-y-6">
+
+          <!-- Prizes -->
+          <div class="card card-glow rounded-xl p-6">
+            <h3 class="font-syne font-bold text-sm tracking-widest uppercase mb-4" style="color:var(--text2)">Prizes</h3>
+            <div id="ov-prizes" class="space-y-3"></div>
+          </div>
+
+          <!-- Tracks -->
+          <div class="card card-glow rounded-xl p-6">
+            <h3 class="font-syne font-bold text-sm tracking-widest uppercase mb-4" style="color:var(--text2)">Tracks</h3>
+            <div id="ov-tracks" class="space-y-3"></div>
+          </div>
+
+          <!-- Judging Criteria -->
+          <div class="card card-glow rounded-xl p-6">
+            <h3 class="font-syne font-bold text-sm tracking-widest uppercase mb-4" style="color:var(--text2)">Judging Criteria</h3>
+            <div id="ov-criteria" class="flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+
+        <!-- Right col: timeline + themes + tech -->
+        <div class="space-y-4">
+
+          <div class="card rounded-xl p-5">
+            <h3 class="font-syne font-bold text-xs tracking-widest uppercase mb-3" style="color:var(--text2)">Timeline</h3>
+            <div id="ov-timeline" class="space-y-2"></div>
+          </div>
+
+          <div class="card rounded-xl p-5">
+            <h3 class="font-syne font-bold text-xs tracking-widest uppercase mb-3" style="color:var(--text2)">Themes</h3>
+            <div id="ov-themes" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+          <div class="card rounded-xl p-5">
+            <h3 class="font-syne font-bold text-xs tracking-widest uppercase mb-3" style="color:var(--text2)">Tech Stack Hints</h3>
+            <div id="ov-tech" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+          <div class="card rounded-xl p-5">
+            <h3 class="font-syne font-bold text-xs tracking-widest uppercase mb-3" style="color:var(--text2)">Sponsors</h3>
+            <div id="ov-sponsors" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Strategic summary -->
+      <div class="mt-6 card rounded-xl p-6" style="background:rgba(0,200,160,0.03);border-color:rgba(0,200,160,0.15);">
+        <div class="flex items-center gap-2 mb-3">
+          <span style="color:var(--accent);font-size:16px;">🎯</span>
+          <h3 class="font-syne font-bold text-sm" style="color:var(--accent)">Strategic Summary</h3>
+        </div>
+        <p id="ov-summary" class="text-sm leading-relaxed" style="color:var(--text2)"></p>
+      </div>
+    </div>
+
+    <!-- ── TAB: JUDGES ─────────────────────────────────────────────── -->
+    <div id="tab-judges" class="tab-panel pt-8">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="font-syne font-bold text-lg" style="color:var(--text)">Judge Intelligence</h2>
+        <span id="judge-count-badge" class="chip"></span>
+      </div>
+      <div id="judges-grid" class="space-y-4"></div>
+    </div>
+
+    <!-- ── TAB: IDEAS ──────────────────────────────────────────────── -->
+    <div id="tab-ideas" class="tab-panel pt-8">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="font-syne font-bold text-lg" style="color:var(--text)">10 Winning Ideas</h2>
+          <p class="text-xs mt-1" style="color:var(--text3)">Ranked by overall score. Click any idea to expand the full brief.</p>
+        </div>
+      </div>
+      <div id="ideas-grid" class="space-y-3"></div>
+    </div>
+
+    <!-- ── TAB: CHAT ───────────────────────────────────────────────── -->
+    <div id="tab-chat" class="tab-panel pt-8">
+      <div class="max-w-3xl mx-auto">
+        <div class="mb-6">
+          <h2 class="font-syne font-bold text-lg mb-1" style="color:var(--text)">Strategy Chat</h2>
+          <p class="text-xs" style="color:var(--text3)">Ask anything about the hackathon, judges, or your ideas. The AI has full context of all scraped data.</p>
+        </div>
+
+        <!-- Suggested starters -->
+        <div id="chat-starters" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6">
+          <button class="card rounded-lg p-3 text-left hover:border-[rgba(0,200,160,0.3)] transition-colors text-xs" style="color:var(--text2)" onclick="sendStarter(this)">
+            Which idea has the strongest alignment with the judges?
+          </button>
+          <button class="card rounded-lg p-3 text-left hover:border-[rgba(0,200,160,0.3)] transition-colors text-xs" style="color:var(--text2)" onclick="sendStarter(this)">
+            What are the biggest mistakes teams make at this kind of hackathon?
+          </button>
+          <button class="card rounded-lg p-3 text-left hover:border-[rgba(0,200,160,0.3)] transition-colors text-xs" style="color:var(--text2)" onclick="sendStarter(this)">
+            If I only had 24 hours, which idea should I build?
+          </button>
+          <button class="card rounded-lg p-3 text-left hover:border-[rgba(0,200,160,0.3)] transition-colors text-xs" style="color:var(--text2)" onclick="sendStarter(this)">
+            How should I open my pitch to get judges' attention in 10 seconds?
+          </button>
+        </div>
+
+        <!-- Messages -->
+        <div id="chat-messages" class="space-y-4 mb-4 min-h-[200px] max-h-[500px] overflow-y-auto pr-1"></div>
+
+        <!-- Input -->
+        <div class="card rounded-xl p-4" style="border-color:var(--border2);">
+          <textarea
+            id="chat-input"
+            class="chat-input w-full rounded-lg px-3 py-2 text-sm mb-3"
+            rows="3"
+            placeholder="Ask the strategist anything about this hackathon…"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"
+          ></textarea>
+          <div class="flex items-center justify-between">
+            <span class="text-[10px]" style="color:var(--text3)">Enter to send · Shift+Enter for new line</span>
+            <button id="chat-send-btn" onclick="sendChat()" class="btn-primary rounded-lg px-5 h-8">Send →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /results -->
+</main>
+
+<script>
+const JOB_ID = "{{ job_id }}";
+let jobData = {};
+let chatHistory = [];
+let activeTab = 'overview';
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function $(id){ return document.getElementById(id); }
+
+function chipClass(i){
+  const classes = ['chip','chip-amber','chip-blue','chip-purple','chip-gray'];
+  return classes[i % classes.length];
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(name){
+  activeTab = name;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('onclick').includes("'"+name+"'"));
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-'+name);
+  });
+}
+
+// ── SSE Progress stream ───────────────────────────────────────────────────
+function startStream(){
+  const src = new EventSource(`/analysis/${JOB_ID}/stream`);
+  const logEl = $('log-container');
+
+  src.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if(msg.type === 'log'){
+      const line = document.createElement('div');
+      line.className = `log-line ${msg.level||'info'}`;
+      line.style.animationDelay = '0ms';
+      const ts = new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      line.innerHTML = `<span style="color:var(--text3);margin-right:8px;">${ts}</span><span style="color:var(--text)">${esc(msg.message)}</span>`;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+
+      // Update live stats from log messages
+      if(msg.message.includes('judges')) {
+        const m = msg.message.match(/(\d+)\s*judges/);
+        if(m) $('stat-judges').textContent = m[1];
+      }
+      if(msg.message.includes('prize') || msg.message.includes('Prize')) {
+        const m = msg.message.match(/(\d+)\s*prizes?/i);
+        if(m) $('stat-prizes').textContent = m[1];
+      }
+      if(msg.message.match(/(\d+)\s*ideas/i)){
+        const m = msg.message.match(/(\d+)\s*ideas/i);
+        if(m) $('stat-ideas').textContent = m[1];
+      }
+      $('status-label').textContent = msg.message.replace(/^[^a-zA-Z0-9]*/, '');
+    }
+
+    if(msg.type === 'done'){
+      src.close();
+      $('spinner').innerHTML = '';
+
+      if(msg.status === 'complete'){
+        $('status-dot').style.background = 'var(--accent)';
+        $('status-dot').classList.remove('pulse');
+        $('status-label').textContent = 'Analysis complete';
+        // Slight delay then load results
+        setTimeout(loadResults, 600);
+      } else {
+        $('status-dot').style.background = 'var(--red)';
+        $('status-dot').classList.remove('pulse');
+        $('status-label').textContent = 'Analysis failed';
+        $('error-box').classList.remove('hidden');
+        loadError();
+      }
+    }
+  };
+
+  src.onerror = () => {
+    src.close();
+    // If the job is already done, just load results
+    fetch(`/analysis/${JOB_ID}/data`).then(r=>r.json()).then(d=>{
+      if(d.status==='complete') loadResults();
+    });
+  };
+}
+
+async function loadError(){
+  const res = await fetch(`/analysis/${JOB_ID}/data`);
+  const d = await res.json();
+  $('error-text').textContent = d.error || 'Unknown error occurred';
+}
+
+// ── Load & render results ─────────────────────────────────────────────────
+async function loadResults(){
+  const res = await fetch(`/analysis/${JOB_ID}/data`);
+  jobData = await res.json();
+
+  // Hide progress, show results
+  $('progress-section').classList.add('hidden');
+  $('results-section').classList.remove('hidden');
+  $('nav-tabs').classList.remove('hidden');
+
+  renderOverview();
+  renderJudges();
+  renderIdeas();
+}
+
+// ─── Overview ─────────────────────────────────────────────────────────────
+function renderOverview(){
+  const ha = jobData.hackathon_analysis || {};
+  const hd = jobData.hackathon_data || {};
+  const get = k => ha[k] || hd[k];
+
+  $('ov-name').textContent = get('name') || jobData.hackathon_name || 'Hackathon';
+  $('ov-dates').textContent = [get('dates'), get('location')].filter(Boolean).join(' · ');
+  $('ov-description').textContent = get('description') || '';
+  $('ov-summary').textContent = get('summary') || '';
+  $('ov-link').href = hd.url || '#';
+
+  // Prizes
+  const prizes = get('prizes') || [];
+  $('ov-prizes').innerHTML = prizes.length
+    ? prizes.map((p,i) => `
+        <div class="flex items-start gap-3 p-3 rounded-lg" style="background:var(--bg3);border:1px solid var(--border);">
+          <span class="chip ${i===0?'chip-amber':i===1?'chip-gray':'chip-blue'} flex-shrink-0">${esc(p.place||('Prize '+(i+1)))}</span>
+          <div>
+            <span class="font-syne font-bold text-sm" style="color:var(--text)">${esc(p.amount||'')}</span>
+            ${p.description ? `<p class="text-xs mt-0.5" style="color:var(--text2)">${esc(p.description)}</p>` : ''}
+          </div>
+        </div>
+      `).join('')
+    : '<p class="text-xs" style="color:var(--text3)">No prize data found.</p>';
+
+  // Tracks
+  const tracks = get('tracks') || [];
+  $('ov-tracks').innerHTML = tracks.length
+    ? tracks.map((t,i) => `
+        <div class="p-3 rounded-lg" style="background:var(--bg3);border:1px solid var(--border);">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="chip ${chipClass(i)}">${esc(t.name||'Track')}</span>
+            ${t.focus ? `<span class="text-[10px]" style="color:var(--text3)">${esc(t.focus)}</span>` : ''}
+          </div>
+          ${t.description ? `<p class="text-xs" style="color:var(--text2)">${esc(t.description)}</p>` : ''}
+        </div>
+      `).join('')
+    : '<p class="text-xs" style="color:var(--text3)">No track data found.</p>';
+
+  // Judging criteria
+  const criteria = get('judging_criteria') || [];
+  $('ov-criteria').innerHTML = criteria.map((c,i) => `<span class="${chipClass(i)}">${esc(c)}</span>`).join('');
+
+  // Timeline
+  const timeline = get('timeline') || [];
+  $('ov-timeline').innerHTML = timeline.length
+    ? timeline.map(t => `
+        <div class="flex items-start gap-2">
+          <div class="w-1 h-1 rounded-full mt-2 flex-shrink-0" style="background:var(--accent)"></div>
+          <div>
+            <p class="text-xs font-semibold" style="color:var(--text)">${esc(t.event||t)}</p>
+            ${t.date ? `<p class="text-[10px]" style="color:var(--text3)">${esc(t.date)}</p>` : ''}
+          </div>
+        </div>
+      `).join('')
+    : '<p class="text-xs" style="color:var(--text3)">No timeline data.</p>';
+
+  // Themes
+  const themes = get('themes') || get('key_focus_areas') || [];
+  $('ov-themes').innerHTML = themes.map((t,i) => `<span class="${chipClass(i)}">${esc(t)}</span>`).join('') || '<span style="color:var(--text3);font-size:11px;">None found</span>';
+
+  // Tech
+  const tech = get('technologies') || [];
+  $('ov-tech').innerHTML = tech.map(t => `<span class="chip chip-blue">${esc(t)}</span>`).join('') || '<span style="color:var(--text3);font-size:11px;">None found</span>';
+
+  // Sponsors
+  const sponsors = get('sponsors') || [];
+  $('ov-sponsors').innerHTML = sponsors.map(s => `<span class="chip chip-gray">${esc(s)}</span>`).join('') || '<span style="color:var(--text3);font-size:11px;">None found</span>';
+
+  // update stat strip
+  $('stat-judges').textContent = (jobData.judges||[]).length;
+  $('stat-prizes').textContent = prizes.length || (get('tracks')||[]).length || '—';
+  $('stat-ideas').textContent = (jobData.ideas||[]).length;
+}
+
+// ─── Judges ───────────────────────────────────────────────────────────────
+function renderJudges(){
+  const judges = jobData.judges || [];
+  $('judge-count-badge').textContent = `${judges.length} judges`;
+
+  $('judges-grid').innerHTML = judges.map((j,idx) => {
+    const a = j.analysis || {};
+    const r = j.research || {};
+    const conf = a.confidence || 'low';
+    const confColor = conf==='high'?'var(--accent)':conf==='medium'?'var(--amber)':'var(--red)';
+    const bgType = a.background_type || '';
+    const bgTypeColor = bgType==='technical'?'chip-blue':bgType==='business'?'chip-amber':bgType==='academic'?'chip-purple':'chip-gray';
+
+    const likes = (a.likes||[]).slice(0,4).map(l => typeof l==='object' ? l : {item:l, reason:''});
+    const dislikes = (a.dislikes||[]).slice(0,3).map(d => typeof d==='object' ? d : {item:d, reason:''});
+    const expertise = (a.expertise||[]).slice(0,5);
+    const hotTopics = (a.hot_topics||[]).slice(0,4);
+    const keywords = (a.keywords_to_use||[]).slice(0,6);
+
+    return `
+    <div class="card card-glow rounded-xl judge-card" id="judge-${idx}">
+      <!-- Header (always visible) -->
+      <div class="p-5 flex items-center gap-4 cursor-pointer" onclick="toggleJudge(${idx})">
+        <!-- Avatar -->
+        <div class="w-12 h-12 rounded-lg flex-shrink-0 flex items-center justify-center font-syne font-black text-lg"
+             style="background:rgba(0,200,160,0.1);color:var(--accent);border:1px solid rgba(0,200,160,0.2);">
+          ${esc((j.name||'?').charAt(0).toUpperCase())}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <p class="font-syne font-bold text-sm" style="color:var(--text)">${esc(j.name||'Unknown')}</p>
+            ${bgType ? `<span class="chip ${bgTypeColor}" style="font-size:10px;">${esc(bgType)}</span>` : ''}
+            <span class="text-[10px] ml-auto" style="color:${confColor}">● ${conf} confidence</span>
+          </div>
+          <p class="text-xs truncate mt-0.5" style="color:var(--text2)">${esc(j.title||'')} ${j.company?'@ '+esc(j.company):''}</p>
+          <p class="text-xs mt-1 line-clamp-1" style="color:var(--text3)">${esc(a.summary||'')}</p>
+        </div>
+        <svg class="judge-chevron flex-shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+
+      <!-- Expanded detail -->
+      <div class="judge-detail px-5 pb-5" style="border-top:1px solid var(--border);">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+
+          <!-- Left: expertise + hot topics + keywords -->
+          <div class="space-y-4">
+            ${expertise.length ? `
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-2" style="color:var(--text3)">Expertise</p>
+              <div class="flex flex-wrap gap-1.5">${expertise.map((e,i)=>`<span class="${chipClass(i)}">${esc(e)}</span>`).join('')}</div>
+            </div>` : ''}
+
+            ${hotTopics.length ? `
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-2" style="color:var(--text3)">Hot Topics Right Now</p>
+              <div class="flex flex-wrap gap-1.5">${hotTopics.map(t=>`<span class="chip chip-purple">${esc(t)}</span>`).join('')}</div>
+            </div>` : ''}
+
+            ${keywords.length ? `
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-2" style="color:var(--text3)">Say These Words</p>
+              <div class="flex flex-wrap gap-1.5">${keywords.map(k=>`<span class="chip chip-amber">${esc(k)}</span>`).join('')}</div>
+            </div>` : ''}
+          </div>
+
+          <!-- Right: likes + dislikes -->
+          <div class="space-y-4">
+            ${likes.length ? `
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-2" style="color:var(--text3)">What They Love ✓</p>
+              <div class="space-y-2">${likes.map(l=>`
+                <div class="flex items-start gap-2">
+                  <span style="color:var(--accent);font-size:11px;margin-top:1px;">+</span>
+                  <div>
+                    <p class="text-xs font-semibold" style="color:var(--text)">${esc(l.item)}</p>
+                    ${l.reason?`<p class="text-[10px]" style="color:var(--text3)">${esc(l.reason)}</p>`:''}
+                  </div>
+                </div>`).join('')}
+              </div>
+            </div>` : ''}
+
+            ${dislikes.length ? `
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-2" style="color:var(--text3)">What They Hate ✗</p>
+              <div class="space-y-2">${dislikes.map(d=>`
+                <div class="flex items-start gap-2">
+                  <span style="color:var(--red);font-size:11px;margin-top:1px;">−</span>
+                  <div>
+                    <p class="text-xs font-semibold" style="color:var(--text)">${esc(d.item)}</p>
+                    ${d.reason?`<p class="text-[10px]" style="color:var(--text3)">${esc(d.reason)}</p>`:''}
+                  </div>
+                </div>`).join('')}
+              </div>
+            </div>` : ''}
+          </div>
+        </div>
+
+        <!-- Golden tip + links -->
+        <div class="mt-4 pt-4 space-y-3" style="border-top:1px solid var(--border);">
+          ${a.tip ? `
+          <div class="rounded-lg p-3" style="background:rgba(0,200,160,0.05);border:1px solid rgba(0,200,160,0.15);">
+            <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--accent)">💡 Golden Tip</p>
+            <p class="text-xs leading-relaxed" style="color:var(--text)">${esc(a.tip)}</p>
+          </div>` : ''}
+
+          ${a.how_to_impress ? `
+          <div class="rounded-lg p-3" style="background:rgba(77,166,255,0.04);border:1px solid rgba(77,166,255,0.15);">
+            <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--blue)">How to Impress</p>
+            <p class="text-xs leading-relaxed" style="color:var(--text2)">${esc(a.how_to_impress)}</p>
+          </div>` : ''}
+
+          ${a.how_to_avoid ? `
+          <div class="rounded-lg p-3" style="background:rgba(245,101,101,0.04);border:1px solid rgba(245,101,101,0.15);">
+            <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--red)">Avoid This</p>
+            <p class="text-xs leading-relaxed" style="color:var(--text2)">${esc(a.how_to_avoid)}</p>
+          </div>` : ''}
+
+          <!-- External links -->
+          <div class="flex gap-2 flex-wrap">
+            ${r.linkedin_url ? `<a href="${esc(r.linkedin_url)}" target="_blank" class="chip chip-blue flex items-center gap-1 hover:opacity-80 no-underline">🔗 LinkedIn</a>` : ''}
+            ${r.website_url ? `<a href="${esc(r.website_url)}" target="_blank" class="chip flex items-center gap-1 hover:opacity-80 no-underline">🌐 Website</a>` : ''}
+            ${(r.papers_talks||[]).length ? `<span class="chip chip-purple">${r.papers_talks.length} talk${r.papers_talks.length>1?'s':''} scraped</span>` : ''}
+            ${(r.news||[]).length ? `<span class="chip chip-gray">${r.news.length} news article${r.news.length>1?'s':''}</span>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+    `;
+  }).join('') || '<p class="text-sm" style="color:var(--text3)">No judges found on the event page.</p>';
+}
+
+function toggleJudge(idx){
+  document.getElementById('judge-'+idx).classList.toggle('open');
+}
+
+// ─── Ideas ────────────────────────────────────────────────────────────────
+function renderIdeas(){
+  const ideas = jobData.ideas || [];
+
+  $('ideas-grid').innerHTML = ideas.map((idea, i) => {
+    const rank = idea.rank || (i+1);
+    const rankClass = rank===1?'rank-1':rank===2?'rank-2':rank===3?'rank-3':'rank-n';
+    const score = idea.overall_score || idea.score || 0;
+    const scoreColor = score>=80?'var(--accent)':score>=60?'var(--amber)':'var(--red)';
+    const alignment = idea.judge_alignment || {};
+    const stack = idea.tech_stack || [];
+    const tracks = idea.tracks || [];
+
+    return `
+    <div class="card card-glow rounded-xl idea-card cursor-pointer" id="idea-${i}" onclick="toggleIdea(${i})">
+      <!-- Summary row -->
+      <div class="p-5 flex items-start gap-4">
+        <div class="rank-badge ${rankClass}">${rank}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-3 flex-wrap mb-1">
+            <h3 class="font-syne font-bold text-sm" style="color:var(--text)">${esc(idea.title||'Untitled')}</h3>
+            <span class="text-[11px] font-syne font-bold" style="color:${scoreColor}">${score}/100</span>
+            <span class="text-[10px]" style="color:var(--text3)">${esc(idea.time_to_build||'')}</span>
+          </div>
+          <p class="text-xs mb-2" style="color:var(--accent)">${esc(idea.tagline||'')}</p>
+          <!-- Score bars mini -->
+          <div class="flex items-center gap-3 flex-wrap text-[10px]" style="color:var(--text3)">
+            <div class="flex items-center gap-1.5 w-24">
+              <span>Innovation</span>
+              <div class="score-bar flex-1" style="height:3px"><div class="score-fill" style="width:${idea.innovation_score||0}%;height:3px;"></div></div>
+            </div>
+            <div class="flex items-center gap-1.5 w-24">
+              <span>Feasibility</span>
+              <div class="score-bar flex-1" style="height:3px"><div class="score-fill" style="width:${idea.feasibility_score||0}%;height:3px;background:var(--blue)"></div></div>
+            </div>
+            <div class="flex items-center gap-1.5 w-20">
+              <span>Impact</span>
+              <div class="score-bar flex-1" style="height:3px"><div class="score-fill" style="width:${idea.impact_score||0}%;height:3px;background:var(--purple)"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-1 justify-end max-w-[180px]">
+          ${stack.slice(0,3).map(t=>`<span class="chip chip-blue" style="font-size:10px;">${esc(t)}</span>`).join('')}
+        </div>
+        <svg class="idea-chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);transition:transform 0.3s;"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+
+      <!-- Expanded -->
+      <div class="idea-detail hidden px-5 pb-5" style="border-top:1px solid var(--border);">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4">
+          <div class="space-y-4">
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--text3)">Description</p>
+              <p class="text-xs leading-relaxed" style="color:var(--text2)">${esc(idea.description||'')}</p>
+            </div>
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--text3)">Problem Solved</p>
+              <p class="text-xs leading-relaxed" style="color:var(--text2)">${esc(idea.problem_solved||'')}</p>
+            </div>
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--text3)">How it Works</p>
+              <p class="text-xs leading-relaxed" style="color:var(--text2)">${esc(idea.solution||'')}</p>
+            </div>
+            ${idea.demo_idea?`
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--text3)">Demo Idea</p>
+              <p class="text-xs leading-relaxed" style="color:var(--text2)">${esc(idea.demo_idea)}</p>
+            </div>`:''}
+          </div>
+
+          <div class="space-y-4">
+            <!-- Pitch opening -->
+            ${idea.pitch_opening?`
+            <div class="rounded-lg p-3" style="background:rgba(0,200,160,0.05);border:1px solid rgba(0,200,160,0.15);">
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--accent)">🎤 Open Your Pitch With</p>
+              <p class="text-xs leading-relaxed font-serif italic text-base" style="color:var(--text)">"${esc(idea.pitch_opening)}"</p>
+            </div>`:''}
+
+            <!-- Why it wins -->
+            ${idea.why_it_wins?`
+            <div class="rounded-lg p-3" style="background:rgba(240,180,41,0.05);border:1px solid rgba(240,180,41,0.15);">
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--amber)">🏆 Why It Wins</p>
+              <p class="text-xs leading-relaxed" style="color:var(--text2)">${esc(idea.why_it_wins)}</p>
+            </div>`:''}
+
+            <!-- Differentiator -->
+            ${idea.differentiator?`
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--text3)">Differentiator</p>
+              <p class="text-xs leading-relaxed" style="color:var(--text2)">${esc(idea.differentiator)}</p>
+            </div>`:''}
+
+            <!-- Risk -->
+            ${idea.risk?`
+            <div class="rounded-lg p-3" style="background:rgba(245,101,101,0.04);border:1px solid rgba(245,101,101,0.12);">
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1" style="color:var(--red)">⚠ Main Risk</p>
+              <p class="text-xs" style="color:var(--text2)">${esc(idea.risk)}</p>
+            </div>`:''}
+
+            <!-- Judge alignment -->
+            ${Object.keys(alignment).length?`
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-2" style="color:var(--text3)">Judge Alignment</p>
+              <div class="space-y-1.5">
+                ${Object.entries(alignment).map(([name, reason])=>`
+                  <div class="flex items-start gap-2">
+                    <span class="chip" style="font-size:10px;flex-shrink:0;">${esc(name)}</span>
+                    <p class="text-[10px]" style="color:var(--text3)">${esc(reason)}</p>
+                  </div>`).join('')}
+              </div>
+            </div>`:''}
+
+            <!-- Full tech stack -->
+            ${stack.length?`
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1.5" style="color:var(--text3)">Full Tech Stack</p>
+              <div class="flex flex-wrap gap-1.5">${stack.map(t=>`<span class="chip chip-blue" style="font-size:10px;">${esc(t)}</span>`).join('')}</div>
+            </div>`:''}
+
+            <!-- Tracks -->
+            ${tracks.length?`
+            <div>
+              <p class="text-[10px] font-syne font-bold uppercase tracking-widest mb-1.5" style="color:var(--text3)">Fits Tracks</p>
+              <div class="flex flex-wrap gap-1.5">${tracks.map((t,i)=>`<span class="${chipClass(i)}" style="font-size:10px;">${esc(t)}</span>`).join('')}</div>
+            </div>`:''}
+          </div>
+        </div>
+
+        <!-- Chat about this idea -->
+        <div class="mt-4 pt-3" style="border-top:1px solid var(--border);">
+          <button onclick="chatAboutIdea(${i})" class="btn-ghost rounded-lg px-4 py-1.5 text-xs flex items-center gap-2">
+            💬 Chat about this idea →
+          </button>
+        </div>
+      </div>
+    </div>
+    `;
+  }).join('') || '<p class="text-sm" style="color:var(--text3)">No ideas generated yet.</p>';
+}
+
+function toggleIdea(i){
+  const card = document.getElementById('idea-'+i);
+  const detail = card.querySelector('.idea-detail');
+  const chevron = card.querySelector('.idea-chevron');
+  const open = detail.classList.toggle('hidden');
+  chevron.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function chatAboutIdea(i){
+  const idea = (jobData.ideas||[])[i];
+  if(!idea) return;
+  switchTab('chat');
+  $('chat-input').value = `Tell me more about idea #${idea.rank}: "${idea.title}". What's the best strategy to develop and pitch this?`;
+  $('chat-input').focus();
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────
+function sendStarter(btn){
+  $('chat-input').value = btn.textContent.trim();
+  $('chat-starters').classList.add('hidden');
+  sendChat();
+}
+
+async function sendChat(){
+  const input = $('chat-input');
+  const message = input.value.trim();
+  if(!message) return;
+
+  const btn = $('chat-send-btn');
+  btn.disabled = true;
+  input.value = '';
+
+  // Add user message
+  appendChatMsg('user', message);
+  chatHistory.push({role:'user', content: message});
+
+  // Typing indicator
+  const typingId = 'typing-' + Date.now();
+  const typing = document.createElement('div');
+  typing.id = typingId;
+  typing.className = 'flex gap-1 items-center p-3';
+  typing.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+  $('chat-messages').appendChild(typing);
+  $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
+
+  try {
+    const res = await fetch(`/analysis/${JOB_ID}/chat`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({message, history: chatHistory.slice(-12)})
+    });
+    const data = await res.json();
+    document.getElementById(typingId)?.remove();
+
+    const reply = data.response || data.error || 'Something went wrong.';
+    appendChatMsg('ai', reply);
+    chatHistory.push({role:'assistant', content: reply});
+  } catch(e) {
+    document.getElementById(typingId)?.remove();
+    appendChatMsg('ai', 'Error: ' + e.message);
+  }
+
+  btn.disabled = false;
+  input.focus();
+}
+
+function appendChatMsg(role, content){
+  const msgs = $('chat-messages');
+  const div = document.createElement('div');
+  div.className = role === 'user' ? 'msg-user p-3 text-sm' : 'msg-ai p-4 text-sm';
+  // Simple markdown-like rendering
+  const html = content
+    .replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--text)">$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`(.*?)`/g, '<code style="background:var(--bg3);padding:1px 4px;border-radius:3px;font-size:11px;">$1</code>')
+    .replace(/\n/g, '<br/>');
+  div.innerHTML = html;
+  div.style.color = role === 'user' ? 'var(--text)' : 'var(--text2)';
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const status = "{{ job.status }}";
+  if(status === 'complete'){
+    loadResults();
+  } else if(status === 'error'){
+    $('status-dot').style.background = 'var(--red)';
+    $('status-dot').classList.remove('pulse');
+    $('error-box').classList.remove('hidden');
+    loadError();
+  } else {
+    startStream();
+  }
+});
+</script>
+</body>
+</html>

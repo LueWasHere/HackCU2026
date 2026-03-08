@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Win The Hackathon</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg: #060b14; --bg2: #0b1220; --bg3: #0f1929;
+      --border: #1a2740; --border2: #243451;
+      --text: #dce8f5; --text2: #7a92b0; --text3: #3d5470;
+      --accent: #00c8a0; --accent2: #00a882;
+      --amber: #f0b429; --red: #f56565; --blue: #4da6ff; --purple: #9b7fe8;
+    }
+    * { box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; min-height: 100vh; overflow-x: hidden; }
+    h1, h2, h3, h4, .font-syne { font-family: 'Syne', sans-serif; }
+    .font-serif { font-family: 'Instrument Serif', serif; }
+
+    .glow-accent { box-shadow: 0 0 30px rgba(0,200,160,0.15); }
+
+    .hero-bg {
+      position: relative;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 40%, rgba(0,200,160,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 20%, rgba(77,166,255,0.04) 0%, transparent 50%),
+        radial-gradient(ellipse 50% 40% at 20% 70%, rgba(155,127,232,0.04) 0%, transparent 50%);
+    }
+    .hero-bg::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(circle 300px at 70% 30%, rgba(0,200,160,0.07) 0%, transparent 100%),
+        radial-gradient(circle 250px at 30% 60%, rgba(155,127,232,0.05) 0%, transparent 100%);
+      animation: orbFloat 12s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+    @keyframes orbFloat {
+      0%   { transform: translate(0,0) scale(1); }
+      50%  { transform: translate(20px,-15px) scale(1.05); }
+      100% { transform: translate(-10px,10px) scale(0.98); }
+    }
+    .hero-bg::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 50%, var(--bg) 100%);
+      pointer-events: none;
+    }
+
+    .url-input {
+      background: var(--bg2); border: 1px solid var(--border2);
+      color: var(--text); font-family: 'JetBrains Mono', monospace;
+      font-size: 14px; transition: all 0.3s; outline: none;
+    }
+    .url-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,200,160,0.1), 0 0 20px rgba(0,200,160,0.08);
+    }
+    .url-input::placeholder { color: var(--text3); }
+
+    .input-glow { position: relative; }
+    .input-glow::before {
+      content: ''; position: absolute; inset: -1px; border-radius: 10px;
+      background: linear-gradient(135deg, rgba(0,200,160,0.2), rgba(77,166,255,0.1), rgba(155,127,232,0.15));
+      opacity: 0; transition: opacity 0.4s; z-index: -1; filter: blur(8px);
+    }
+    .input-glow:focus-within::before { opacity: 1; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #00b090);
+      color: #060b14; font-family: 'Syne', sans-serif; font-weight: 700;
+      font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase;
+      transition: all 0.3s; cursor: pointer; position: relative; overflow: hidden;
+    }
+    .btn-primary::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%);
+      transform: translateX(-100%); transition: transform 0.6s;
+    }
+    .btn-primary:hover::after { transform: translateX(100%); }
+    .btn-primary:hover { box-shadow: 0 4px 20px rgba(0,200,160,0.3); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-primary:disabled::after { display: none; }
+
+    .card {
+      background: rgba(11,18,32,0.7); backdrop-filter: blur(12px);
+      border: 1px solid var(--border); transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+    }
+    .card:hover { border-color: var(--border2); transform: translateY(-1px); }
+
+    .chip {
+      background: rgba(0,200,160,0.08); border: 1px solid rgba(0,200,160,0.2);
+      color: var(--accent); font-size: 11px; padding: 2px 8px; border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace; display: inline-block;
+    }
+
+    @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    .pulse { animation: pulse-dot 1.2s ease infinite; }
+
+    @keyframes fadeSlideIn { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+
+    /* feature cards */
+    .feat-icon {
+      width:40px; height:40px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+      font-size:18px; flex-shrink:0;
+    }
+
+    /* History panel */
+    #history-panel { transform: translateX(100%); transition: transform 0.3s ease; }
+    #history-panel.open { transform: translateX(0); }
+
+    ::-webkit-scrollbar { width:4px; height:4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius:2px; }
+  </style>
+</head>
+<body>
+
+<!-- History Sidebar -->
+<div id="history-overlay" class="fixed inset-0 bg-black/50 z-40 hidden" onclick="closeHistory()"></div>
+<div id="history-panel" class="fixed right-0 top-0 bottom-0 w-80 z-50 flex flex-col" style="background:var(--bg2); border-left:1px solid var(--border);">
+  <div class="flex items-center justify-between p-4" style="border-bottom:1px solid var(--border)">
+    <span class="font-syne font-bold text-sm tracking-widest uppercase" style="color:var(--accent)">Past Analyses</span>
+    <button onclick="closeHistory()" style="color:var(--text2)" class="hover:text-white text-lg leading-none">✕</button>
+  </div>
+  <div id="history-list" class="flex-1 overflow-y-auto p-4 space-y-2"></div>
+</div>
+
+<!-- Nav -->
+<nav class="fixed top-0 left-0 right-0 z-30" style="border-bottom:1px solid rgba(26,39,64,0.6); background:rgba(6,11,20,0.7); backdrop-filter:blur(20px);">
+  <div class="max-w-7xl mx-auto px-6 h-12 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-6 h-6 rounded flex items-center justify-center" style="background:var(--accent)">
+        <span style="color:#060b14; font-size:11px; font-weight:800; font-family:'Syne',sans-serif;">W</span>
+      </div>
+      <span class="font-syne font-bold text-sm tracking-wider" style="color:var(--text)">WIN THE HACKATHON</span>
+    </div>
+    <button onclick="openHistory()" class="flex items-center gap-2 text-xs transition-colors" style="color:var(--text2)" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text2)'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      History
+    </button>
+  </div>
+</nav>
+
+<!-- Main -->
+<main class="pt-12 min-h-screen">
+
+  <!-- Hero -->
+  <section class="hero-bg min-h-[calc(100vh-48px)] flex items-center justify-center px-6">
+    <div class="max-w-2xl w-full text-center relative z-10">
+
+      <div class="inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full text-[11px]" style="color:var(--text2); background:rgba(0,200,160,0.04); border:1px solid rgba(0,200,160,0.12);">
+        <span class="w-1.5 h-1.5 rounded-full pulse inline-block" style="background:var(--accent)"></span>
+        Deep judge research — powered by Gemini Flash + Crawl4AI
+      </div>
+
+      <h1 class="font-syne font-extrabold mb-4 leading-tight" style="font-size:clamp(32px,6vw,64px); letter-spacing:-0.02em;">
+        Know your judges.<br/>
+        <span class="font-serif italic" style="background:linear-gradient(135deg,#00c8a0,#4da6ff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">Win the hackathon.</span>
+      </h1>
+
+      <p class="mb-10 leading-relaxed" style="color:var(--text2); font-size:14px; max-width:520px; margin:0 auto 40px;">
+        Paste any hackathon URL. We crawl the event, research every judge across LinkedIn, blogs, papers, and news — then generate 10 project ideas tailored to exactly what this panel will fund.
+      </p>
+
+      <!-- Input row -->
+      <div class="input-glow flex gap-2 max-w-xl mx-auto rounded-lg">
+        <input
+          id="url-input"
+          type="url"
+          class="url-input flex-1 h-12 px-4 rounded-lg"
+          placeholder="https://yourchallenge.devpost.com"
+          onkeydown="if(event.key==='Enter') startAnalysis()"
+        />
+        <button id="analyze-btn" onclick="startAnalysis()" class="btn-primary h-12 px-6 rounded-lg whitespace-nowrap">
+          Analyze →
+        </button>
+      </div>
+
+      <!-- Error message -->
+      <div id="error-msg" class="hidden mt-4 text-sm px-4 py-2 rounded-lg" style="color:var(--red); background:rgba(245,101,101,0.08); border:1px solid rgba(245,101,101,0.2);"></div>
+
+      <!-- Supported platforms -->
+      <div class="mt-6 flex items-center justify-center gap-4 text-[11px]" style="color:var(--text3)">
+        <span class="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity cursor-default">
+          <span class="w-1 h-1 rounded-full" style="background:var(--text3)"></span>Devpost
+        </span>
+        <span class="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity cursor-default">
+          <span class="w-1 h-1 rounded-full" style="background:var(--text3)"></span>MLH
+        </span>
+        <span class="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity cursor-default">
+          <span class="w-1 h-1 rounded-full" style="background:var(--text3)"></span>Lablab.ai
+        </span>
+        <span class="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity cursor-default">
+          <span class="w-1 h-1 rounded-full" style="background:var(--text3)"></span>Any event site
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature strip -->
+  <section class="px-6 pb-24" style="border-top:1px solid var(--border);">
+    <div class="max-w-5xl mx-auto pt-20">
+      <p class="text-center text-xs font-syne tracking-widest uppercase mb-12" style="color:var(--text3)">How it works</p>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+        <div class="card rounded-xl p-5">
+          <div class="feat-icon mb-4" style="background:rgba(0,200,160,0.1);">🌐</div>
+          <p class="font-syne font-bold text-sm mb-1" style="color:var(--text)">Crawl Event Page</p>
+          <p class="text-xs leading-relaxed" style="color:var(--text2)">Crawl4AI extracts prizes, tracks, judges, criteria, timeline, and all sponsor links.</p>
+        </div>
+
+        <div class="card rounded-xl p-5">
+          <div class="feat-icon mb-4" style="background:rgba(77,166,255,0.1);">🔍</div>
+          <p class="font-syne font-bold text-sm mb-1" style="color:var(--text)">Research Judges</p>
+          <p class="text-xs leading-relaxed" style="color:var(--text2)">Auto-scrapes each judge's LinkedIn, personal site, papers, talks, and news coverage.</p>
+        </div>
+
+        <div class="card rounded-xl p-5">
+          <div class="feat-icon mb-4" style="background:rgba(155,127,232,0.1);">🤖</div>
+          <p class="font-syne font-bold text-sm mb-1" style="color:var(--text)">Gemini Analysis</p>
+          <p class="text-xs leading-relaxed" style="color:var(--text2)">Flash builds judge profiles: what they love, hate, hot topics, and the one thing to never do.</p>
+        </div>
+
+        <div class="card rounded-xl p-5">
+          <div class="feat-icon mb-4" style="background:rgba(240,180,41,0.1);">💡</div>
+          <p class="font-syne font-bold text-sm mb-1" style="color:var(--text)">10 Winning Ideas</p>
+          <p class="text-xs leading-relaxed" style="color:var(--text2)">Ranked project ideas with pitch angles, tech stacks, and judge-by-judge alignment scores.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ── History ────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function openHistory() {
+  $('history-overlay').classList.remove('hidden');
+  $('history-panel').classList.add('open');
+  const res = await fetch('/history');
+  const items = await res.json();
+  const list = $('history-list');
+  if (!items.length) {
+    list.innerHTML = '<p class="text-xs" style="color:var(--text3)">No past analyses yet.</p>';
+    return;
+  }
+  list.innerHTML = items.map(item => `
+    <div class="card rounded-lg p-3 cursor-pointer transition-colors"
+         onclick="location.href='/analysis/${esc(item.id)}'"
+         style="hover:border-color:rgba(0,200,160,0.3)">
+      <p class="font-syne font-semibold text-xs truncate" style="color:var(--text)">${esc(item.hackathon_name||'Unnamed Hackathon')}</p>
+      <p class="text-[10px] mt-1 truncate" style="color:var(--text3)">${esc(item.url)}</p>
+      <div class="flex items-center justify-between mt-2">
+        <span class="text-[10px]" style="color:var(--text2)">${item.judge_count||0} judges</span>
+        <span class="text-[10px]" style="color:${item.status==='complete'?'var(--accent)':item.status==='error'?'var(--red)':'var(--amber)'}">${esc(item.status)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function closeHistory() {
+  $('history-overlay').classList.add('hidden');
+  $('history-panel').classList.remove('open');
+}
+
+// ── Start analysis ─────────────────────────────────────────────────────
+async function startAnalysis() {
+  const url = $('url-input').value.trim();
+  if (!url) { $('url-input').focus(); return; }
+
+  const btn = $('analyze-btn');
+  const errEl = $('error-msg');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+  errEl.classList.add('hidden');
+
+  try {
+    const res = await fetch('/analyze', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    location.href = `/analysis/${data.job_id}`;
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Analyze →';
+    errEl.textContent = e.message || 'Failed to start — check the URL and try again';
+    errEl.classList.remove('hidden');
+  }
+}
+</script>
+</body>
+</html>
