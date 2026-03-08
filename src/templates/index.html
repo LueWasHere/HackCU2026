@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JudgeIntel — Hackathon Intelligence Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg: #060b14;
+      --bg2: #0b1220;
+      --bg3: #0f1929;
+      --border: #1a2740;
+      --border2: #243451;
+      --text: #dce8f5;
+      --text2: #7a92b0;
+      --text3: #3d5470;
+      --accent: #00c8a0;
+      --accent2: #00a882;
+      --amber: #f0b429;
+      --red: #f56565;
+      --blue: #4da6ff;
+      --purple: #9b7fe8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Grain overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.4;
+    }
+
+    h1, h2, h3, h4, .font-syne { font-family: 'Syne', sans-serif; }
+    .font-serif { font-family: 'Instrument Serif', serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Glow effects */
+    .glow-accent { box-shadow: 0 0 30px rgba(0, 200, 160, 0.15); }
+    .glow-amber { box-shadow: 0 0 20px rgba(240, 180, 41, 0.12); }
+
+    /* Grid bg */
+    .grid-bg {
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      background-position: -1px -1px;
+    }
+
+    /* Scan line animation */
+    @keyframes scanline {
+      0% { transform: translateY(-100%); }
+      100% { transform: translateY(100vh); }
+    }
+
+    .scanline {
+      position: fixed;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(transparent, rgba(0,200,160,0.08), transparent);
+      animation: scanline 6s linear infinite;
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* Input */
+    .url-input {
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      transition: all 0.2s;
+      outline: none;
+    }
+    .url-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,200,160,0.1);
+    }
+    .url-input::placeholder { color: var(--text3); }
+
+    /* Buttons */
+    .btn-primary {
+      background: var(--accent);
+      color: #060b14;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* Cards */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--border2); }
+    .card-glow:hover { border-color: rgba(0,200,160,0.3); box-shadow: 0 0 20px rgba(0,200,160,0.05); }
+
+    /* Chips / tags */
+    .chip {
+      background: rgba(0,200,160,0.08);
+      border: 1px solid rgba(0,200,160,0.2);
+      color: var(--accent);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      display: inline-block;
+    }
+    .chip-amber {
+      background: rgba(240,180,41,0.08);
+      border-color: rgba(240,180,41,0.2);
+      color: var(--amber);
+    }
+    .chip-red {
+      background: rgba(245,101,101,0.08);
+      border-color: rgba(245,101,101,0.2);
+      color: var(--red);
+    }
+    .chip-blue {
+      background: rgba(77,166,255,0.08);
+      border-color: rgba(77,166,255,0.2);
+      color: var(--blue);
+    }
+    .chip-purple {
+      background: rgba(155,127,232,0.08);
+      border-color: rgba(155,127,232,0.2);
+      color: var(--purple);
+    }
+    .chip-gray {
+      background: rgba(122,146,176,0.08);
+      border-color: rgba(122,146,176,0.2);
+      color: var(--text2);
+    }
+
+    /* Progress log */
+    .log-line {
+      border-left: 2px solid var(--border);
+      padding-left: 12px;
+      margin: 4px 0;
+      animation: fadeSlideIn 0.3s ease forwards;
+      opacity: 0;
+    }
+    .log-line.done { border-left-color: var(--accent); }
+    .log-line.error { border-left-color: var(--red); }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateX(-8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Pulse dot */
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .pulse { animation: pulse-dot 1.2s ease infinite; }
+
+    /* Judge card expand */
+    .judge-detail { display: none; }
+    .judge-card.open .judge-detail { display: block; }
+    .judge-card.open .judge-chevron { transform: rotate(180deg); }
+    .judge-chevron { transition: transform 0.2s; }
+
+    /* Progress bar */
+    .prog-bar {
+      height: 2px;
+      background: var(--border);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    .prog-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 1px;
+      transition: width 0.5s ease;
+    }
+
+    /* Tabs */
+    .tab { cursor: pointer; transition: all 0.15s; color: var(--text2); border-bottom: 2px solid transparent; padding-bottom: 8px; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* Rank badge */
+    .rank-badge {
+      width: 28px; height: 28px;
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 13px;
+    }
+    .rank-1 { background: rgba(240,180,41,0.15); color: var(--amber); border: 1px solid rgba(240,180,41,0.3); }
+    .rank-2 { background: rgba(122,146,176,0.1); color: var(--text2); border: 1px solid var(--border2); }
+    .rank-3 { background: rgba(240,140,80,0.1); color: #f09050; border: 1px solid rgba(240,140,80,0.3); }
+    .rank-n { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); }
+
+    /* Stat bar */
+    .stat-bar-fill {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--accent);
+      transition: width 1s ease;
+    }
+
+    /* Sections animate in */
+    .section-reveal {
+      animation: sectionIn 0.5s ease forwards;
+      opacity: 0;
+    }
+    @keyframes sectionIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* Tooltip */
+    .tooltip { position: relative; }
+    .tooltip:hover .tt { display: block; }
+    .tt {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      z-index: 100;
+    }
+
+    /* History sidebar */
+    #history-panel {
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+    }
+    #history-panel.open {
+      transform: translateX(0);
+    }
+
+    .confid-high { color: var(--accent); }
+    .confid-medium { color: var(--amber); }
+    .confid-low { color: var(--red); }
+  </style>
+</head>
+
+<body>
+<div class="scanline"></div>
+
+<!-- ── History Sidebar ─────────────────────────────────────────────── -->
+<div id="history-overlay" class="fixed inset-0 bg-black/50 z-40 hidden" onclick="closeHistory()"></div>
+<div id="history-panel" class="fixed right-0 top-0 bottom-0 w-80 bg-[#0b1220] border-l border-[#1a2740] z-50 flex flex-col">
+  <div class="flex items-center justify-between p-4 border-b border-[#1a2740]">
+    <span class="font-syne font-bold text-sm tracking-widest uppercase text-[#00c8a0]">Past Analyses</span>
+    <button onclick="closeHistory()" class="text-[#7a92b0] hover:text-white text-lg leading-none">✕</button>
+  </div>
+  <div id="history-list" class="flex-1 overflow-y-auto p-4 space-y-2"></div>
+</div>
+
+<!-- ── Top Nav ─────────────────────────────────────────────────────── -->
+<nav class="fixed top-0 left-0 right-0 z-30 border-b border-[#1a2740] bg-[#060b14]/90 backdrop-blur-sm">
+  <div class="max-w-7xl mx-auto px-6 h-12 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-6 h-6 rounded flex items-center justify-center" style="background: var(--accent)">
+        <span style="color:#060b14; font-size:11px; font-weight:800; font-family:'Syne',sans-serif;">JI</span>
+      </div>
+      <span class="font-syne font-bold text-sm tracking-wider" style="color:var(--text)">JUDGEINTEL</span>
+      <span class="hidden sm:inline text-[10px] font-mono" style="color:var(--text3)">// hackathon intelligence</span>
+    </div>
+    <button onclick="openHistory()" class="flex items-center gap-2 text-xs text-[#7a92b0] hover:text-[#00c8a0] transition-colors">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      History
+    </button>
+  </div>
+</nav>
+
+<!-- ── Main Content ────────────────────────────────────────────────── -->
+<main class="pt-12 min-h-screen">
+
+  <!-- Hero / Input Section -->
+  <section id="hero" class="grid-bg min-h-[calc(100vh-48px)] flex items-center justify-center px-6 transition-all duration-500">
+    <div class="max-w-2xl w-full text-center">
+      <!-- Badge -->
+      <div class="inline-flex items-center gap-2 mb-8 px-3 py-1 rounded-full border border-[#1a2740] text-[11px] text-[#7a92b0]">
+        <span class="w-1.5 h-1.5 rounded-full bg-[#00c8a0] pulse inline-block"></span>
+        Deep judge intelligence — powered by Gemini + Crawl4AI
+      </div>
+
+      <!-- Headline -->
+      <h1 class="font-syne font-extrabold mb-4 leading-tight" style="font-size: clamp(32px, 6vw, 64px); letter-spacing: -0.02em;">
+        Know your judges.<br/>
+        <span class="font-serif italic" style="color: var(--accent)">Win the hackathon.</span>
+      </h1>
+
+      <p class="text-[#7a92b0] mb-10 leading-relaxed" style="font-size: 14px; max-width: 520px; margin: 0 auto 40px;">
+        Paste any hackathon URL. We crawl the event page, research every judge across LinkedIn, GitHub, papers, and news — then generate project ideas tailored to what this specific panel will fund.
+      </p>
+
+      <!-- Input -->
+      <div class="flex gap-2 max-w-xl mx-auto">
+        <input
+          id="url-input"
+          type="url"
+          class="url-input flex-1 h-12 px-4 rounded-lg"
+          placeholder="https://yourchallenge.devpost.com"
+          onkeydown="if(event.key==='Enter') startAnalysis()"
+        />
+        <button id="analyze-btn" onclick="startAnalysis()" class="btn-primary h-12 px-6 rounded-lg whitespace-nowrap">
+          Analyze →
+        </button>
+      </div>
+
+      <!-- Examples -->
+      <p class="mt-4 text-[11px] text-[#3d5470]">
+        Works with Devpost, MLH, Lablab.ai, Hack the North, and any event website
+      </p>
+    </div>
+  </section>
+
+  <!-- Progress Section (hidden until analysis starts) -->
+  <section id="progress-section" class="hidden px-6 py-8 max-w-5xl mx-auto">
+    <!-- Hackathon found banner -->
+    <div id="hackathon-banner" class="hidden card rounded-xl p-5 mb-6 section-reveal">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-[10px] text-[#3d5470] uppercase tracking-widest mb-1">Hackathon Detected</p>
+          <h2 id="hack-name" class="font-syne font-bold text-xl text-white"></h2>
+          <p id="hack-theme" class="text-[#7a92b0] text-xs mt-1"></p>
+        </div>
+        <div id="hack-meta" class="text-right text-xs text-[#7a92b0] space-y-1 shrink-0"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Left: Status log -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center gap-2 mb-4">
+          <span id="status-dot" class="w-2 h-2 rounded-full bg-[#00c8a0] pulse inline-block"></span>
+          <span class="font-syne font-bold text-xs uppercase tracking-widest text-[#7a92b0]">Live Progress</span>
+        </div>
+        <div id="progress-log" class="space-y-1 min-h-[120px]"></div>
+        <div class="mt-4">
+          <div class="prog-bar mt-2">
+            <div id="prog-fill" class="prog-fill" style="width: 0%"></div>
+          </div>
+          <p id="prog-label" class="text-[11px] text-[#3d5470] mt-1">Initializing...</p>
+        </div>
+      </div>
+
+      <!-- Right: Judge discovery -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="font-syne font-bold text-xs uppercase tracking-widest text-[#7a92b0]">Judges Found</span>
+          <span id="judge-count-badge" class="chip text-[10px]">0</span>
+        </div>
+        <div id="judge-discovery-list" class="space-y-2 min-h-[120px]"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Results Section (hidden until complete) -->
+  <section id="results-section" class="hidden px-6 py-8 max-w-7xl mx-auto">
+
+    <!-- Results header -->
+    <div class="mb-6 flex items-center justify-between">
+      <div>
+        <p class="text-[10px] text-[#3d5470] uppercase tracking-widest mb-1">Analysis Complete</p>
+        <h2 id="results-hack-name" class="font-syne font-extrabold text-2xl"></h2>
+      </div>
+      <button onclick="resetApp()" class="text-xs text-[#7a92b0] hover:text-[#00c8a0] border border-[#1a2740] hover:border-[#00c8a0]/30 px-4 py-2 rounded-lg transition-all">
+        ← New Analysis
+      </button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-6 border-b border-[#1a2740] mb-8">
+      <button class="tab active font-syne font-semibold text-sm" onclick="showTab('overview', this)">Overview</button>
+      <button class="tab font-syne font-semibold text-sm" onclick="showTab('judges', this)">Judges</button>
+      <button class="tab font-syne font-semibold text-sm" onclick="showTab('ideas', this)">Project Ideas</button>
+    </div>
+
+    <!-- ── Tab: Overview ───────────────────────────────────────── -->
+    <div id="tab-overview" class="tab-content">
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+        <!-- Hackathon Details -->
+        <div class="card rounded-xl p-6 section-reveal" style="animation-delay: 0.05s">
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-4">Hackathon Details</p>
+          <div id="hack-details-card" class="space-y-3 text-sm"></div>
+        </div>
+
+        <!-- Panel Summary -->
+        <div class="card rounded-xl p-6 section-reveal" style="animation-delay: 0.1s">
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-4">Judge Panel</p>
+          <div id="panel-summary-card"></div>
+        </div>
+
+        <!-- Biggest Opportunity -->
+        <div class="card rounded-xl p-6 section-reveal glow-accent" style="animation-delay: 0.15s; border-color: rgba(0,200,160,0.2)">
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-4">Biggest Opportunity</p>
+          <div id="opportunity-card"></div>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+
+        <!-- Top Industries -->
+        <div class="card rounded-xl p-6 section-reveal" style="animation-delay: 0.2s">
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-5">Top Industries</p>
+          <div id="industries-chart" class="space-y-4"></div>
+        </div>
+
+        <!-- Consensus -->
+        <div class="card rounded-xl p-6 section-reveal" style="animation-delay: 0.25s">
+          <div class="grid grid-cols-2 gap-6 h-full">
+            <div>
+              <p class="text-[10px] uppercase tracking-widest mb-3" style="color: var(--accent)">✓ They Like</p>
+              <div id="consensus-liked" class="space-y-2"></div>
+            </div>
+            <div>
+              <p class="text-[10px] uppercase tracking-widest mb-3" style="color: var(--red)">✕ They Penalize</p>
+              <div id="consensus-disliked" class="space-y-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Technologies -->
+      <div class="card rounded-xl p-6 mt-6 section-reveal" style="animation-delay: 0.3s">
+        <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-4">Technologies They Know & Value</p>
+        <div id="tech-chips" class="flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Judges ─────────────────────────────────────────── -->
+    <div id="tab-judges" class="tab-content hidden">
+      <div id="judges-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-4"></div>
+    </div>
+
+    <!-- ── Tab: Ideas ──────────────────────────────────────────── -->
+    <div id="tab-ideas" class="tab-content hidden">
+      <div class="mb-4 flex items-center gap-3">
+        <p class="text-xs text-[#7a92b0]">Ranked by fit with this specific judge panel</p>
+      </div>
+      <div id="ideas-list" class="space-y-4"></div>
+    </div>
+
+  </section>
+
+  <!-- Error Section -->
+  <div id="error-section" class="hidden px-6 py-16 text-center max-w-md mx-auto">
+    <div class="text-3xl mb-4">⚠</div>
+    <p class="font-syne font-bold text-lg mb-2">Analysis Failed</p>
+    <p id="error-msg" class="text-[#7a92b0] text-sm mb-6"></p>
+    <button onclick="resetApp()" class="btn-primary px-6 py-3 rounded-lg">Try Again</button>
+  </div>
+
+</main>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────
+let currentJobId = null;
+let evtSource = null;
+let judgesData = [];
+let progressStep = 0;
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmt(arr) {
+  if (!arr || !arr.length) return '<span class="text-[#3d5470]">—</span>';
+  return arr.map(x => `<span class="chip">${esc(x)}</span>`).join(' ');
+}
+
+function fmtList(arr, cls='') {
+  if (!arr || !arr.length) return '<p class="text-[#3d5470] text-xs">None noted</p>';
+  return arr.map(x => `<p class="text-xs text-[#dce8f5] flex gap-2"><span class="${cls}">›</span>${esc(x)}</p>`).join('');
+}
+
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    if (!/^https?:$/.test(u.protocol)) return '';
+    u.search = '';
+    u.hash = '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
+function validLinkedinProfile(url) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return '';
+  try {
+    const u = new URL(normalized);
+    const host = u.hostname.toLowerCase();
+    const path = u.pathname.toLowerCase();
+    if (!host.includes('linkedin.com')) return '';
+    if (!(path.startsWith('/in/') || path.startsWith('/pub/'))) return '';
+    return normalized;
+  } catch {
+    return '';
+  }
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  $('tab-' + name).classList.remove('hidden');
+  btn.classList.add('active');
+}
+
+// ── History ──────────────────────────────────────────────────────────────
+async function openHistory() {
+  $('history-overlay').classList.remove('hidden');
+  $('history-panel').classList.add('open');
+  const res = await fetch('/history');
+  const items = await res.json();
+  const list = $('history-list');
+  if (!items.length) {
+    list.innerHTML = '<p class="text-xs text-[#3d5470]">No past analyses yet.</p>';
+    return;
+  }
+  list.innerHTML = items.map(item => `
+    <div class="card rounded-lg p-3 cursor-pointer hover:border-[#00c8a0]/30 transition-colors"
+         onclick="loadHistory('${esc(item.id)}')">
+      <p class="font-syne font-semibold text-xs text-white truncate">${esc(item.hackathon_name || 'Unnamed Hackathon')}</p>
+      <p class="text-[10px] text-[#3d5470] mt-1 truncate">${esc(item.url)}</p>
+      <div class="flex items-center justify-between mt-2">
+        <span class="text-[10px] text-[#7a92b0]">${item.judge_count || 0} judges</span>
+        <span class="text-[10px] ${item.status === 'complete' ? 'text-[#00c8a0]' : item.status === 'error' ? 'text-[#f56565]' : 'text-[#f0b429]'}">${esc(item.status)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function closeHistory() {
+  $('history-overlay').classList.add('hidden');
+  $('history-panel').classList.remove('open');
+}
+
+async function loadHistory(jobId) {
+  closeHistory();
+  const res = await fetch(`/results/${jobId}`);
+  const data = await res.json();
+  if (data.results) {
+    resetProgress();
+    showResults(data.results);
+  }
+}
+
+// ── Analysis flow ────────────────────────────────────────────────────────
+async function startAnalysis() {
+  const url = $('url-input').value.trim();
+  if (!url) { $('url-input').focus(); return; }
+
+  const btn = $('analyze-btn');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+
+  // Shrink hero
+  $('hero').classList.remove('min-h-[calc(100vh-48px)]', 'flex', 'items-center', 'justify-center');
+  $('hero').classList.add('py-8');
+  $('error-section').classList.add('hidden');
+  $('results-section').classList.add('hidden');
+  $('progress-section').classList.remove('hidden');
+
+  progressStep = 0;
+  $('prog-fill').style.width = '5%';
+  $('prog-label').textContent = 'Starting...';
+  $('progress-log').innerHTML = '';
+  $('judge-discovery-list').innerHTML = '';
+  $('judge-count-badge').textContent = '0';
+  $('hackathon-banner').classList.add('hidden');
+  judgesData = [];
+
+  try {
+    const res = await fetch('/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    currentJobId = data.job_id;
+    listenSSE(currentJobId);
+  } catch(e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = 'Analyze →';
+  }
+}
+
+function listenSSE(jobId) {
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource(`/stream/${jobId}`);
+
+  evtSource.onmessage = e => {
+    try {
+      handleEvent(JSON.parse(e.data));
+    } catch(ex) {
+      console.error('SSE parse error', ex);
+    }
+  };
+
+  evtSource.onerror = () => {
+    evtSource.close();
+  };
+}
+
+function handleEvent(ev) {
+  switch(ev.type) {
+    case 'heartbeat': break;
+
+    case 'status':
+      addLog(ev.message, 'info');
+      progressStep++;
+      const pct = Math.min(10 + progressStep * 18, 85);
+      $('prog-fill').style.width = pct + '%';
+      $('prog-label').textContent = ev.message;
+      break;
+
+    case 'hackathon_found':
+      showHackathonBanner(ev.hackathon);
+      break;
+
+    case 'judges_found':
+      $('judge-count-badge').textContent = ev.count;
+      addLog(`Found ${ev.count} judge${ev.count !== 1 ? 's' : ''}`, 'done');
+      ev.judges.forEach(j => addJudgeDiscovery(j));
+      break;
+
+    case 'judge_start':
+      updateJudgeDiscovery(ev.judge_name, 'researching');
+      break;
+
+    case 'judge_research_done':
+      updateJudgeDiscovery(ev.judge_name, 'analyzed', `${ev.sources_found} source${ev.sources_found !== 1 ? 's' : ''}`);
+      break;
+
+    case 'judge_complete':
+      updateJudgeDiscovery(ev.judge_name, 'complete');
+      judgesData.push(ev.judge);
+      addLog(`✓ ${ev.judge_name} profiled`, 'done');
+      break;
+
+    case 'judge_error':
+      updateJudgeDiscovery(ev.judge_name, 'error');
+      addLog(`⚠ ${ev.judge_name}: ${ev.error}`, 'error');
+      break;
+
+    case 'complete':
+      evtSource.close();
+      $('status-dot').classList.remove('pulse');
+      $('status-dot').style.background = 'var(--accent)';
+      $('prog-fill').style.width = '100%';
+      $('prog-label').textContent = 'Analysis complete!';
+      addLog('🎯 Intelligence report ready', 'done');
+      setTimeout(() => showResults(ev.data), 800);
+      break;
+
+    case 'error':
+      evtSource.close();
+      showError(ev.message);
+      break;
+  }
+}
+
+// ── Progress UI helpers ──────────────────────────────────────────────────
+function addLog(msg, type='info') {
+  const div = document.createElement('div');
+  div.className = `log-line ${type} text-xs`;
+  const colors = { done: 'text-[#00c8a0]', error: 'text-[#f56565]', info: 'text-[#7a92b0]' };
+  div.innerHTML = `<span class="${colors[type] || colors.info}">${esc(msg)}</span>`;
+  $('progress-log').appendChild(div);
+  $('progress-log').scrollTop = $('progress-log').scrollHeight;
+}
+
+function showHackathonBanner(h) {
+  $('hack-name').textContent = h.name || 'Hackathon';
+  $('hack-theme').textContent = h.theme || h.description || '';
+  const meta = [];
+  if (h.organizer) meta.push(`<p>${esc(h.organizer)}</p>`);
+  if (h.location) meta.push(`<p>${esc(h.location)}</p>`);
+  if (h.dates?.submission_deadline) meta.push(`<p>Due: ${esc(h.dates.submission_deadline)}</p>`);
+  $('hack-meta').innerHTML = meta.join('');
+  $('hackathon-banner').classList.remove('hidden');
+}
+
+function addJudgeDiscovery(j) {
+  const id = `jd-${j.name.replace(/\s+/g, '-').toLowerCase()}`;
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = 'flex items-center gap-3 p-2 rounded-lg border border-[#1a2740]';
+  div.innerHTML = `
+    <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+         style="background: rgba(0,200,160,0.1); color: var(--accent); font-family: 'Syne', sans-serif">
+      ${esc(j.name.charAt(0))}
+    </div>
+    <div class="flex-1 min-w-0">
+      <p class="text-xs font-semibold text-white truncate">${esc(j.name)}</p>
+      <p class="text-[10px] text-[#3d5470] truncate">${esc(j.title || '')}${j.company ? ' · ' + esc(j.company) : ''}</p>
+    </div>
+    <span id="${id}-status" class="text-[10px] text-[#3d5470] shrink-0">queued</span>
+  `;
+  $('judge-discovery-list').appendChild(div);
+}
+
+function updateJudgeDiscovery(name, status, extra='') {
+  const id = `jd-${name.replace(/\s+/g, '-').toLowerCase()}-status`;
+  const el = document.getElementById(id);
+  if (!el) return;
+  const map = {
+    researching: '<span class="text-[#f0b429]">● crawling</span>',
+    analyzed: `<span class="text-[#4da6ff]">● ${esc(extra)}</span>`,
+    complete: '<span class="text-[#00c8a0]">✓ done</span>',
+    error: '<span class="text-[#f56565]">✕ err</span>',
+  };
+  el.innerHTML = map[status] || esc(status);
+}
+
+// ── Results rendering ────────────────────────────────────────────────────
+function showResults(data) {
+  $('progress-section').classList.add('hidden');
+  $('results-section').classList.remove('hidden');
+
+  const h = data.hackathon || {};
+  const stats = data.aggregate_stats || {};
+  const judges = data.judges || [];
+  const ideas = data.project_ideas || [];
+
+  $('results-hack-name').textContent = h.name || 'Hackathon';
+
+  // Reset to Overview tab
+  showTab('overview', document.querySelector('.tab'));
+
+  renderOverview(h, stats);
+  renderJudges(judges);
+  renderIdeas(ideas);
+
+  $('analyze-btn').disabled = false;
+  $('analyze-btn').textContent = 'Analyze →';
+}
+
+function renderOverview(h, stats) {
+  // Hackathon details card
+  const details = [];
+  if (h.description) details.push(`<p class="text-xs text-[#7a92b0] leading-relaxed">${esc(h.description)}</p>`);
+  if (h.organizer) details.push(infoRow('Organizer', h.organizer));
+  if (h.location) details.push(infoRow('Location', h.location));
+  if (h.prizes?.length) details.push(infoRow('Prizes', h.prizes.slice(0,3).join(', ')));
+  if (h.tracks?.length) details.push(`<div>${h.tracks.map(t => `<span class="chip chip-amber mr-1 mb-1">${esc(t)}</span>`).join('')}</div>`);
+  if (h.technologies?.length) details.push(`<div>${h.technologies.slice(0,8).map(t => `<span class="chip chip-blue mr-1 mb-1">${esc(t)}</span>`).join('')}</div>`);
+  $('hack-details-card').innerHTML = details.join('') || '<p class="text-xs text-[#3d5470]">Details not extracted.</p>';
+
+  // Panel summary
+  const panelHtml = `
+    <p class="text-xs text-[#7a92b0] leading-relaxed mb-4">${esc(stats.panel_summary || '')}</p>
+    ${stats.dominant_archetype ? `<div class="p-3 rounded-lg border border-[#1a2740] mb-3">
+      <p class="text-[10px] text-[#3d5470] mb-1">Dominant Archetype</p>
+      <p class="text-xs text-white">${esc(stats.dominant_archetype)}</p>
+    </div>` : ''}
+    ${stats.judging_style ? `<div class="p-3 rounded-lg border border-[#1a2740]">
+      <p class="text-[10px] text-[#3d5470] mb-1">Judging Style</p>
+      <p class="text-xs text-white">${esc(stats.judging_style)}</p>
+    </div>` : ''}
+  `;
+  $('panel-summary-card').innerHTML = panelHtml;
+
+  // Biggest opportunity
+  $('opportunity-card').innerHTML = stats.biggest_opportunity
+    ? `<p class="text-sm text-white leading-relaxed">${esc(stats.biggest_opportunity)}</p>`
+    : '<p class="text-xs text-[#3d5470]">—</p>';
+
+  // Industries chart
+  const industries = stats.top_industries || [];
+  $('industries-chart').innerHTML = industries.slice(0,7).map(ind => `
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-xs text-[#dce8f5]">${esc(ind.name)}</span>
+        <span class="text-[11px] text-[#7a92b0]">${ind.percentage || ind.count || 0}%</span>
+      </div>
+      <div class="prog-bar">
+        <div class="stat-bar-fill" style="width: ${Math.min(ind.percentage || ((ind.count||1)*20), 100)}%"></div>
+      </div>
+      ${ind.judges?.length ? `<p class="text-[10px] text-[#3d5470] mt-1">${ind.judges.slice(0,3).join(', ')}</p>` : ''}
+    </div>
+  `).join('') || '<p class="text-xs text-[#3d5470]">No industry data.</p>';
+
+  // Consensus liked
+  const liked = stats.consensus_liked || [];
+  $('consensus-liked').innerHTML = liked.slice(0,6).map(x =>
+    `<div class="flex gap-2 text-xs items-start"><span style="color:var(--accent)" class="shrink-0 mt-0.5">✓</span><span class="text-[#dce8f5]">${esc(x)}</span></div>`
+  ).join('') || '<p class="text-xs text-[#3d5470]">—</p>';
+
+  const disliked = stats.consensus_disliked || [];
+  $('consensus-disliked').innerHTML = disliked.slice(0,6).map(x =>
+    `<div class="flex gap-2 text-xs items-start"><span style="color:var(--red)" class="shrink-0 mt-0.5">✕</span><span class="text-[#dce8f5]">${esc(x)}</span></div>`
+  ).join('') || '<p class="text-xs text-[#3d5470]">—</p>';
+
+  // Tech chips
+  const techs = stats.top_technologies || [];
+  $('tech-chips').innerHTML = techs.map(t => {
+    const cls = t.interest_level === 'high' ? '' : 'chip-gray';
+    return `<span class="chip ${cls} tooltip">${esc(t.name)}<span class="tt">${esc(t.judges?.join(', ') || '')}</span></span>`;
+  }).join('') || '<p class="text-xs text-[#3d5470]">No data.</p>';
+}
+
+function infoRow(label, val) {
+  return `<div class="flex justify-between gap-4">
+    <span class="text-[11px] text-[#3d5470] shrink-0">${esc(label)}</span>
+    <span class="text-xs text-[#dce8f5] text-right">${esc(val)}</span>
+  </div>`;
+}
+
+function renderJudges(judges) {
+  $('judges-grid').innerHTML = judges.map((j, i) => {
+    const conf = j.research_confidence || 'medium';
+    const confClass = conf === 'high' ? 'confid-high' : conf === 'low' ? 'confid-low' : 'confid-medium';
+
+    const links = [];
+    const linkedin = validLinkedinProfile(j.linkedin_url);
+    const github = normalizeUrl(j.github_url);
+    const website = normalizeUrl(j.website_url);
+    if (linkedin) links.push(`<a href="${esc(linkedin)}" target="_blank" class="chip chip-blue text-[10px]">LinkedIn ↗</a>`);
+    if (github) links.push(`<a href="${esc(github)}" target="_blank" class="chip chip-gray text-[10px]">GitHub ↗</a>`);
+    if (website) links.push(`<a href="${esc(website)}" target="_blank" class="chip chip-gray text-[10px]">Site ↗</a>`);
+
+    return `
+    <div class="card card-glow rounded-xl overflow-hidden judge-card section-reveal" style="animation-delay:${i*0.05}s">
+      <div class="p-5 cursor-pointer" onclick="toggleJudge(this.closest('.judge-card'))">
+        <div class="flex items-start gap-4">
+          ${j.photo_url ? `<img src="${esc(j.photo_url)}" class="w-12 h-12 rounded-lg object-cover shrink-0 border border-[#1a2740]" onerror="this.style.display='none'" />` : `
+          <div class="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center font-syne font-extrabold text-lg"
+               style="background: rgba(0,200,160,0.08); color: var(--accent); border: 1px solid rgba(0,200,160,0.15)">
+            ${esc((j.name||'?').charAt(0))}
+          </div>`}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <h3 class="font-syne font-bold text-sm text-white">${esc(j.name)}</h3>
+              <span class="${confClass} text-[10px]">● ${esc(conf)}</span>
+            </div>
+            <p class="text-[11px] text-[#7a92b0]">${esc(j.title || '')}${j.company ? ' · <span class="text-[#4da6ff]">' + esc(j.company) + '</span>' : ''}</p>
+            ${j.expertise?.length ? `<div class="flex flex-wrap gap-1 mt-2">${j.expertise.slice(0,4).map(x => `<span class="chip text-[10px]">${esc(x)}</span>`).join('')}</div>` : ''}
+          </div>
+          <svg class="judge-chevron shrink-0 text-[#3d5470]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </div>
+
+      <div class="judge-detail border-t border-[#1a2740] px-5 pb-5 pt-4 space-y-4">
+        ${j.bio ? `<p class="text-xs text-[#7a92b0] leading-relaxed">${esc(j.bio)}</p>` : ''}
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <p class="text-[10px] uppercase tracking-widest mb-2" style="color:var(--accent)">✓ Likes</p>
+            ${fmtList(j.likes, 'text-[#00c8a0]')}
+          </div>
+          <div>
+            <p class="text-[10px] uppercase tracking-widest mb-2" style="color:var(--red)">✕ Dislikes</p>
+            ${fmtList(j.dislikes, 'text-[#f56565]')}
+          </div>
+        </div>
+
+        ${j.key_insights?.length ? `
+        <div>
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2">Key Insights</p>
+          <div class="space-y-1">
+            ${j.key_insights.map(x => `
+              <div class="flex gap-2 text-xs items-start p-2 rounded-lg" style="background:rgba(0,200,160,0.04); border:1px solid rgba(0,200,160,0.1)">
+                <span style="color:var(--accent)" class="shrink-0">→</span>
+                <span class="text-[#dce8f5]">${esc(x)}</span>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+
+        ${j.best_pitch_approach ? `
+        <div class="p-3 rounded-lg" style="background:rgba(155,127,232,0.06); border:1px solid rgba(155,127,232,0.15)">
+          <p class="text-[10px] uppercase tracking-widest text-[#9b7fe8] mb-1">Best Pitch Approach</p>
+          <p class="text-xs text-[#dce8f5] leading-relaxed">${esc(j.best_pitch_approach)}</p>
+        </div>` : ''}
+
+        ${j.notable_work?.length ? `
+        <div>
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2">Notable Work</p>
+          <div class="flex flex-wrap gap-1">${j.notable_work.map(x => `<span class="chip chip-amber">${esc(x)}</span>`).join('')}</div>
+        </div>` : ''}
+
+        ${j.industries?.length ? `
+        <div>
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2">Industries</p>
+          <div class="flex flex-wrap gap-1">${j.industries.map(x => `<span class="chip chip-purple">${esc(x)}</span>`).join('')}</div>
+        </div>` : ''}
+
+        ${links.length ? `<div class="flex gap-2 pt-1">${links.join('')}</div>` : ''}
+
+        ${j.research_sources?.length ? `
+        <p class="text-[10px] text-[#3d5470]">${j.research_sources.length} source${j.research_sources.length !== 1 ? 's' : ''} crawled</p>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleJudge(card) {
+  card.classList.toggle('open');
+}
+
+function renderIdeas(ideas) {
+  $('ideas-list').innerHTML = ideas.map((idea, i) => {
+    const rank = idea.rank || (i + 1);
+    const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : 'rank-n';
+    const diffColor = idea.difficulty === 'Easy' ? 'chip-accent' : idea.difficulty === 'Hard' ? 'chip-red' : 'chip-amber';
+
+    return `
+    <div class="card card-glow rounded-xl p-6 section-reveal" style="animation-delay:${i*0.06}s">
+      <div class="flex items-start gap-4">
+        <div class="rank-badge ${rankClass} shrink-0 mt-0.5">${rank}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-2 mb-1">
+            <h3 class="font-syne font-extrabold text-base text-white">${esc(idea.title)}</h3>
+            <span class="chip ${diffColor} text-[10px]">${esc(idea.difficulty || 'Medium')}</span>
+            ${idea.track ? `<span class="chip chip-blue text-[10px]">${esc(idea.track)}</span>` : ''}
+          </div>
+          <p class="text-xs text-[#00c8a0] mb-2 italic">${esc(idea.tagline || '')}</p>
+          <p class="text-xs text-[#7a92b0] leading-relaxed mb-4">${esc(idea.description || '')}</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2">Why This Wins</p>
+              <p class="text-xs text-[#dce8f5] leading-relaxed">${esc(idea.why_this_wins || '')}</p>
+            </div>
+
+            <div>
+              <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2">Tech Stack</p>
+              <div class="flex flex-wrap gap-1">
+                ${(idea.tech_stack || []).map(t => `<span class="chip chip-blue text-[10px]">${esc(t)}</span>`).join('')}
+              </div>
+              ${idea.industries?.length ? `
+              <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2 mt-3">Industries</p>
+              <div class="flex flex-wrap gap-1">
+                ${idea.industries.map(x => `<span class="chip chip-purple text-[10px]">${esc(x)}</span>`).join('')}
+              </div>` : ''}
+            </div>
+          </div>
+
+          ${idea.judge_appeal ? `
+          <div class="grid grid-cols-2 gap-3 mt-4">
+            ${idea.judge_appeal.strong?.length ? `
+            <div class="p-3 rounded-lg" style="background:rgba(0,200,160,0.04);border:1px solid rgba(0,200,160,0.1)">
+              <p class="text-[10px] text-[#00c8a0] uppercase tracking-widest mb-1">Strong Appeal</p>
+              <p class="text-[11px] text-[#dce8f5]">${idea.judge_appeal.strong.join(', ')}</p>
+            </div>` : ''}
+            ${idea.judge_appeal.weak?.length ? `
+            <div class="p-3 rounded-lg" style="background:rgba(245,101,101,0.04);border:1px solid rgba(245,101,101,0.1)">
+              <p class="text-[10px] text-[#f56565] uppercase tracking-widest mb-1">Weaker Appeal</p>
+              <p class="text-[11px] text-[#7a92b0]">${Array.isArray(idea.judge_appeal.weak) ? idea.judge_appeal.weak.join(', ') : esc(String(idea.judge_appeal.weak))}</p>
+            </div>` : ''}
+          </div>` : ''}
+
+          ${idea.execution_tips?.length ? `
+          <div class="mt-4">
+            <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2">Execution Tips</p>
+            <div class="space-y-1">
+              ${idea.execution_tips.map(t => `
+                <div class="flex gap-2 text-xs"><span class="text-[#f0b429] shrink-0">→</span><span class="text-[#dce8f5]">${esc(t)}</span></div>
+              `).join('')}
+            </div>
+          </div>` : ''}
+
+          ${idea.demo_strategy ? `
+          <div class="mt-4 p-3 rounded-lg" style="background:rgba(240,180,41,0.05);border:1px solid rgba(240,180,41,0.12)">
+            <p class="text-[10px] text-[#f0b429] uppercase tracking-widest mb-1">Demo Strategy</p>
+            <p class="text-xs text-[#dce8f5]">${esc(idea.demo_strategy)}</p>
+          </div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Error & Reset ────────────────────────────────────────────────────────
+function showError(msg) {
+  $('progress-section').classList.add('hidden');
+  $('results-section').classList.add('hidden');
+  $('error-section').classList.remove('hidden');
+  $('error-msg').textContent = msg;
+  $('analyze-btn').disabled = false;
+  $('analyze-btn').textContent = 'Analyze →';
+}
+
+function resetApp() {
+  $('progress-section').classList.add('hidden');
+  $('results-section').classList.add('hidden');
+  $('error-section').classList.add('hidden');
+  $('hero').classList.add('min-h-[calc(100vh-48px)]', 'flex', 'items-center', 'justify-center');
+  $('hero').classList.remove('py-8');
+  $('url-input').value = '';
+  if (evtSource) evtSource.close();
+}
+
+function resetProgress() {
+  $('progress-section').classList.add('hidden');
+  $('hero').classList.add('min-h-[calc(100vh-48px)]', 'flex', 'items-center', 'justify-center');
+  $('hero').classList.remove('py-8');
+}
+</script>
+</body>
+</html>

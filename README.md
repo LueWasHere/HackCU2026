@@ -1,229 +1,230 @@
-# HackCU 2026 - JudgeIntel
+# JudgeIntel — Hackathon Intelligence Platform
 
-JudgeIntel is a hackathon intelligence app built at HackCU 2026.
+**HackCU 2026 Project**
 
-You provide a hackathon event URL, and the system:
-- crawls the event page,
-- extracts judge information,
-- researches each judge across the web,
-- builds judge profiles (likes, dislikes, interests, and pitch guidance),
-- generates ranked project ideas tailored to that specific panel.
+Paste any hackathon URL. Get deep intelligence on every judge — and tailor your project to win.
 
-The app includes a live progress UI (Server-Sent Events) and persists results in SQLite.
+Built during **HackCU 2026** as a rapid prototype exploring how AI-powered research pipelines can help hackers better understand judging panels and pitch more strategically.
 
-## Team
+---
 
-- Adam Duncan
-- Wyatt Greene
+# Overview
 
-## Repository Layout
+JudgeIntel analyzes hackathon judging panels and generates actionable insights to help teams craft stronger project ideas.
 
-- `README.md` - top-level project documentation
-- `hackathon-intel/` - main application
-  - `app.py` - Flask web app + API routes + SSE streaming endpoint
-  - `pipeline.py` - orchestration for crawl -> extract -> research -> analyze
-  - `crawler.py` - Crawl4AI-based web crawling and source collection workers
-  - `analyzer.py` - Gemini-powered extraction and profile generation
-  - `database.py` - SQLite persistence helpers
-  - `templates/index.html` - frontend interface (Tailwind + vanilla JS)
-  - `requirements.txt` - Python dependencies
-  - `hackathon_intel.db` - SQLite database file (generated/updated at runtime)
+Simply provide a hackathon page URL and JudgeIntel will:
 
-## Core Features
+1. Crawl the event page (Devpost, MLH, or custom sites)
+2. Extract the list of judges
+3. Perform automated research on each judge
+4. Build strategic profiles
+5. Generate project ideas tailored to that specific judging panel
 
-- Hackathon page crawling (Devpost and generic event pages)
-- AI extraction of:
-  - hackathon metadata,
-  - judges list
-- Multi-worker judge research pipeline (runs in parallel)
-- Per-judge intelligence including:
-  - expertise,
-  - industries,
-  - likes/dislikes,
-  - pitch strategy,
-  - key insights,
-  - supporting sources
-- Judge-panel aggregate analysis
-- Ranked, panel-specific project ideas
-- Real-time pipeline progress in the browser via SSE
-- Local history of analyses in SQLite
+All analysis streams live while the system runs and is saved for later viewing.
 
-## High-Level Architecture
+---
 
-1. User submits a URL in the frontend (`/`).
-2. Backend creates a job ID and starts a background thread.
-3. Thread runs an async pipeline:
-   - crawl hackathon page,
-   - extract judges + event metadata,
-   - research judges with parallel workers,
-   - generate structured judge profiles,
-   - synthesize final analysis + project ideas.
-4. Pipeline emits events to a per-job queue.
-5. Frontend listens on `/stream/<job_id>` and updates live.
-6. Final payload is saved in SQLite and can be reloaded from history.
+# Features
 
-## Tech Stack
+## Automated Judge Discovery
+- Crawls hackathon pages to locate and extract judges
+- Works with Devpost, MLH, and many custom event sites
 
-- Backend: Python + Flask
-- Crawling: Crawl4AI (Playwright-backed)
-- AI: Google Gemini via `google.genai`
-- Frontend: HTML + Tailwind CSS + vanilla JavaScript
-- Storage: SQLite
+## Parallel Judge Research
+For every judge, the system launches **three parallel research workers**:
 
-## Prerequisites
+- LinkedIn profile discovery
+- GitHub / personal website discovery
+- News articles, talks, and research papers
 
-- Python 3.10+ recommended
-- `pip`
-- Network access for crawling and AI calls
-- Gemini API key
+## Strategic Judge Profiles
+Each judge profile includes insights such as:
 
-## Setup
+- Professional background
+- Areas of expertise
+- Technical interests
+- Signals about what they value in projects
 
-### 1. Clone
+## AI-Generated Project Ideas
+JudgeIntel generates **7–9 ranked project ideas** tailored to the specific panel of judges.
 
-```bash
+This helps teams align their project with:
+
+- judge expertise
+- company interests
+- emerging technical trends
+
+## Live Streaming Results
+All research and analysis streams live using **Server-Sent Events (SSE)** while the pipeline runs.
+
+## Persistent History
+All analyses are stored in **SQLite**, allowing teams to revisit past hackathons and judge panels.
+
+---
+
+# Tech Stack
+
+**Backend**
+- Python
+- Flask
+- SQLite
+
+**AI**
+- Gemini 2.0 Flash
+
+**Web Crawling**
+- Crawl4AI
+- Playwright browsers
+
+**Frontend**
+- HTML
+- Tailwind CSS
+- Vanilla JavaScript
+
+---
+
+# Architecture
+
+app.py
+Flask app with SSE streaming endpoint
+
+pipeline.py
+Background orchestration (thread + asyncio)
+
+crawler.py
+Web crawling using Crawl4AI
+Launches 3 research workers per judge
+
+analyzer.py
+Judge extraction + analysis using Gemini 2.0 Flash
+
+database.py
+SQLite storage for past analyses
+
+templates/index.html
+Single page frontend (Tailwind + vanilla JS)
+
+---
+
+# Crawling Strategy (No Paid APIs)
+
+JudgeIntel performs search by directly crawling DuckDuckGo HTML search results.
+
+Workers perform the following searches:
+
+**Worker 1**
+LinkedIn profiles
+
+**Worker 2**
+GitHub and personal websites
+
+**Worker 3**
+News articles, papers, interviews, and talks
+
+Search queries are executed through:
+
+https://html.duckduckgo.com/html/?q=...
+
+This avoids paid search APIs while still enabling broad discovery.
+
+---
+
+# Setup
+
+## 1. Clone the repository
+
+```
 git clone https://github.com/LueWasHere/HackCU2026.git
-cd HackCU2026/hackathon-intel
+cd HackCU2026
 ```
 
-### 2. Create a virtual environment
+## 2. Install dependencies
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
 ```
-
-Windows PowerShell:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-### 3. Install dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 4. Install Crawl4AI browser dependencies (one-time)
+## 3. Install Crawl4AI browsers (one-time setup)
 
-```bash
+```
 crawl4ai-setup
 ```
 
-If that command is unavailable:
+or
 
-```bash
+```
 python -m crawl4ai.install
 ```
 
-### 5. Configure environment variables
+## 4. Configure your API key
 
-Create a `.env` file in `hackathon-intel/`:
+Create a `.env` file:
 
-```bash
-GEMINI_API_KEY=your_api_key_here
+```
+GEMINI_API_KEY=your_key_here
 ```
 
-Get a key from Google AI Studio.
+Get a free key here:
+https://aistudio.google.com/app/apikey
 
-## Run the App
+## 5. Run the application
 
-From `hackathon-intel/`:
-
-```bash
-python3 app.py
+```
+python src/app.py
 ```
 
-Open:
+Then open:
 
-- `http://localhost:5000`
+http://localhost:5000
 
-## API Endpoints
+---
 
-- `GET /`
-  - Serves the web UI.
+# Usage
 
-- `POST /analyze`
-  - Body: `{ "url": "https://..." }`
-  - Starts a new analysis job.
-  - Returns `{ "job_id": "..." }`.
+Paste any hackathon event URL into the interface.
 
-- `GET /stream/<job_id>`
-  - SSE endpoint for live progress updates.
+Examples:
 
-- `GET /results/<job_id>`
-  - Returns saved job + final result payload.
+https://yourchallenge.devpost.com
+https://mlh.io/events/some-hackathon
 
-- `GET /history`
-  - Returns previous analyses from SQLite.
+The system will:
 
-## Pipeline Stages
+1. Extract judges
+2. Launch research workers
+3. Build judge profiles
+4. Generate tailored project ideas
 
-The analysis pipeline runs in four major stages:
+Typical runtime for **5 judges**: ~2–4 minutes.
 
-1. Crawl Event Page
-- Fetches main event content.
-- For Devpost links, also attempts additional detail coverage.
+---
 
-2. Extract Event + Judges
-- Gemini parses event text into structured JSON.
-- Produces hackathon metadata and initial judge list.
+# Notes
 
-3. Judge Research (parallel workers)
-- Runs multiple source-specific workers (LinkedIn, GitHub/site, news, social, academic, company, talks, transcripts, general web, podcasts/HN).
-- Consolidates crawled evidence and source links.
+- LinkedIn often blocks scraping, so results may vary.
+- Gemini calls are throttled to avoid rate limits.
+- All results are stored in `hackathon_intel.db`
 
-4. Final Synthesis
-- Builds detailed judge profiles.
-- Computes panel-level summary and recommendations.
-- Generates ranked project ideas.
+---
 
-## Data Model (Conceptual)
+# Future Improvements
 
-Final result payload includes:
+- Improve judge discovery reliability
+- Better LinkedIn extraction
+- Enhanced idea ranking
+- UI/UX improvements
+- Exportable reports
+- Team collaboration features
 
-- `hackathon`: name, theme, tracks, prizes, timeline, organizer, etc.
-- `judges[]`: enriched per-judge profile fields (bio, expertise, likes/dislikes, links, confidence, sources)
-- `aggregate_stats`: panel summary and consensus signals
-- `project_ideas[]`: ranked ideas with rationale, stack, and judge appeal
+---
 
-## Known Limitations
+# Team
 
-- LinkedIn is intentionally difficult to crawl; some profiles/photos may be missing.
-- Output quality depends on page structure and public web presence of judges.
-- Large judge lists can increase runtime significantly.
-- AI extraction can occasionally miss or misclassify sparse page content.
+Adam Duncan
+Wyatt Greene
 
-## Troubleshooting
+---
 
-- `GEMINI_API_KEY is not set`
-  - Ensure `.env` exists in `hackathon-intel/` and includes `GEMINI_API_KEY=...`.
+# HackCU 2026
 
-- Crawl/browser errors
-  - Re-run `crawl4ai-setup` (or `python -m crawl4ai.install`).
-
-- Very slow analyses
-  - This is expected for judge-heavy pages; each judge triggers multiple crawls and AI calls.
-
-- No judges found
-  - Try a URL that directly includes the event judges section.
-
-## Development Notes
-
-- The current app runs Flask in debug mode on port `5000`.
-- Results are stored in `hackathon_intel.db` in the app directory.
-- Frontend is intentionally dependency-light and uses vanilla JS for render logic.
-
-## Suggested Next Improvements
-
-- Add automated tests for crawler normalization and SSE event flow.
-- Add stronger URL/entity disambiguation for judge profile matching.
-- Add retry/backoff strategy for transient crawl/API failures.
-- Add export options (JSON/PDF report).
-- Add Dockerfile and one-command local startup.
-
-## License
-
-MIT License (see [LICENSE](LICENSE)).
+This project was built during **HackCU 2026** as a fast-paced hackathon prototype focused on experimentation, AI tooling, and rapid iteration.
