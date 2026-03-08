@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-LinkedIn Matching Benchmark
+LinkedIn Matching Benchmark - Fast Version
 
 Tests the LinkedIn worker against ground truth data from benchmarks.csv.
-Reads Name, Career/Title, and expected LinkedIn URL from the CSV file.
+Simply run: python3 linkedin_bench.py
 """
 
 import asyncio
@@ -11,7 +11,7 @@ import csv
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
 # Add the current directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -23,7 +23,7 @@ from analyzer import HackathonAnalyzer
 @dataclass
 class JudgeTestCase:
     name: str
-    title: str  # Career / Title from CSV
+    title: str
     expected_linkedin: str
 
 
@@ -32,17 +32,23 @@ def parse_career_title(career_title: str) -> tuple[str, str]:
     if not career_title or career_title.strip() == "N/A":
         return "", ""
     
-    # Common separators that indicate company
-    separators = [" @ ", " – ", " - ", " at ", " | ", ", "]
-    
+    separators = [" @ ", " – ", " at ", " - ", " | ", ", "]
     career_title = career_title.strip()
     
     for sep in separators:
         if sep in career_title:
             parts = career_title.split(sep, 1)
-            return parts[0].strip(), parts[1].strip()
+            title = parts[0].strip()
+            company = parts[1].strip()
+            
+            # Clean up company
+            company_delimiters = [" · ", ";", " | ", ", ", " and ", " – ", " - "]
+            for delim in company_delimiters:
+                if delim in company:
+                    company = company.split(delim, 1)[0].strip()
+            
+            return title, company
     
-    # No separator found, use as title only
     return career_title, ""
 
 
@@ -60,7 +66,6 @@ def load_benchmark_data(csv_path: str) -> list[JudgeTestCase]:
             if not name:
                 continue
             
-            # Normalize LinkedIn URL
             if linkedin_url.upper() == "N/A" or not linkedin_url:
                 linkedin_url = ""
             
@@ -81,112 +86,103 @@ def normalize_url(url: str) -> str:
     return url.rstrip('/')
 
 
+async def test_single_judge(crawler: HackathonCrawler, analyzer: HackathonAnalyzer, 
+                            judge: JudgeTestCase, index: int, total: int) -> dict:
+    """Test a single judge - designed for parallel execution."""
+    title, company = parse_career_title(judge.title)
+    
+    result = await crawler.worker_linkedin(
+        judge.name, 
+        company, 
+        title,
+        analyzer=analyzer
+    )
+    
+    found_url = result.get("linkedin_url", "")
+    found_normalized = normalize_url(found_url)
+    expected_normalized = normalize_url(judge.expected_linkedin)
+    
+    # Determine status
+    if not judge.expected_linkedin:
+        status = "CORRECT_NO_PROFILE" if not found_url else "FALSE_POSITIVE"
+    else:
+        if not found_url:
+            status = "NOT_FOUND"
+        elif found_normalized == expected_normalized:
+            status = "CORRECT"
+        else:
+            status = "WRONG"
+    
+    status_emoji = {
+        "CORRECT": "✅",
+        "CORRECT_NO_PROFILE": "✅",
+        "WRONG": "❌",
+        "NOT_FOUND": "❌",
+        "FALSE_POSITIVE": "⚠️",
+    }.get(status, "?")
+    
+    print(f"[{index}/{total}] {status_emoji} {judge.name}: {status} - {found_url or '(none)'}", flush=True)
+    
+    return {
+        "name": judge.name,
+        "expected": judge.expected_linkedin,
+        "found": found_url,
+        "status": status,
+    }
+
+
 class LinkedInBenchmark:
     def __init__(self, use_gemini_verification: bool = False, csv_path: str = None):
         self.use_gemini = use_gemini_verification
         self.csv_path = csv_path or os.path.join(os.path.dirname(__file__), "benchmarks.csv")
         self.crawler = None
         self.analyzer = None
-        self.test_cases = []
         
     async def setup(self):
         """Initialize crawler and analyzer."""
         self.crawler = HackathonCrawler()
-        if self.use_gemini:
-            self.analyzer = HackathonAnalyzer()
-        
-        # Load test data from CSV
-        self.test_cases = load_benchmark_data(self.csv_path)
+        self.analyzer = HackathonAnalyzer() if self.use_gemini else None
             
     async def teardown(self):
         """Clean up resources."""
         if self.crawler:
             await self.crawler.close()
             
-    async def test_judge(self, judge: JudgeTestCase) -> dict:
-        """Test a single judge and return results."""
-        # Parse career title into title and company
-        title, company = parse_career_title(judge.title)
-        
-        result = await self.crawler.worker_linkedin(
-            judge.name, 
-            company, 
-            title,
-            analyzer=self.analyzer if self.use_gemini else None
-        )
-        
-        found_url = result.get("linkedin_url", "")
-        found_normalized = normalize_url(found_url)
-        expected_normalized = normalize_url(judge.expected_linkedin)
-        
-        # Determine status
-        if not judge.expected_linkedin:
-            # Judge shouldn't have LinkedIn
-            if not found_url:
-                status = "CORRECT_NO_PROFILE"
-            else:
-                status = "FALSE_POSITIVE"
-        else:
-            # Judge should have LinkedIn
-            if not found_url:
-                status = "NOT_FOUND"
-            elif found_normalized == expected_normalized:
-                status = "CORRECT"
-            else:
-                status = "WRONG"
-                
-        return {
-            "name": judge.name,
-            "title": judge.title,
-            "parsed_title": title,
-            "parsed_company": company,
-            "expected": judge.expected_linkedin,
-            "found": found_url,
-            "status": status,
-        }
-        
-    async def run(self, verbose: bool = True, limit: int = None) -> dict:
-        """Run the full benchmark."""
+    async def run(self) -> dict:
+        """Run the full benchmark with parallel processing."""
         await self.setup()
         
         try:
-            results = []
+            # Load test cases
+            test_cases = load_benchmark_data(self.csv_path)
             
-            # Apply limit if specified
-            test_cases = self.test_cases[:limit] if limit else self.test_cases
+            mode = "WITH Gemini" if self.use_gemini else "WITHOUT Gemini"
+            print("=" * 80)
+            print(f"LINKEDIN BENCHMARK - {mode} - {len(test_cases)} judges")
+            print("=" * 80)
+            print("Testing (results appear as completed):\n")
             
-            if verbose:
-                mode = "WITH Gemini verification" if self.use_gemini else "WITHOUT Gemini verification"
-                print("=" * 80)
-                print(f"LINKEDIN MATCHING BENCHMARK - {mode}")
-                print(f"Data source: {self.csv_path}")
-                print("=" * 80)
-                print(f"Testing {len(test_cases)} judges from CSV\n")
+            # Run all tests concurrently with semaphore to limit concurrency
+            semaphore = asyncio.Semaphore(3)  # Max 3 concurrent to avoid rate limits
             
-            for i, judge in enumerate(test_cases, 1):
-                if verbose:
-                    print(f"\n[{i}/{len(test_cases)}] Testing: {judge.name}")
-                    print(f"    Career: {judge.title}")
-                    print(f"    Expected: {judge.expected_linkedin or '(no profile expected)'}")
-                
-                result = await self.test_judge(judge)
-                results.append(result)
-                
-                if verbose:
-                    status_emoji = {
-                        "CORRECT": "✅",
-                        "CORRECT_NO_PROFILE": "✅",
-                        "WRONG": "❌",
-                        "NOT_FOUND": "❌",
-                        "FALSE_POSITIVE": "⚠️",
-                    }.get(result["status"], "?")
-                    print(f"    {status_emoji} {result['status']}: {result['found'] or '(none)'}")
+            async def run_with_semaphore(judge, index, total):
+                async with semaphore:
+                    return await test_single_judge(
+                        self.crawler, self.analyzer, judge, index, total
+                    )
+            
+            # Create all tasks
+            tasks = [
+                run_with_semaphore(judge, i+1, len(test_cases))
+                for i, judge in enumerate(test_cases)
+            ]
+            
+            # Run all concurrently
+            results = await asyncio.gather(*tasks)
             
             # Calculate statistics
             stats = self._calculate_stats(results)
-            
-            if verbose:
-                self._print_stats(stats)
+            self._print_stats(stats)
                 
             return {"results": results, "stats": stats}
             
@@ -201,10 +197,8 @@ class LinkedInBenchmark:
         not_found = sum(1 for r in results if r["status"] == "NOT_FOUND")
         false_positive = sum(1 for r in results if r["status"] == "FALSE_POSITIVE")
         
-        # Calculate accuracy
         accuracy = (correct / total * 100) if total > 0 else 0
         
-        # Among judges that SHOULD have LinkedIn, how many did we find correctly?
         should_have_profile = [r for r in results if r["expected"]]
         found_correctly = sum(1 for r in should_have_profile if r["status"] == "CORRECT")
         profile_accuracy = (found_correctly / len(should_have_profile) * 100) if should_have_profile else 0
@@ -222,58 +216,25 @@ class LinkedInBenchmark:
     def _print_stats(self, stats: dict):
         """Print benchmark statistics."""
         print("\n" + "=" * 80)
-        print("BENCHMARK RESULTS")
+        print("RESULTS")
         print("=" * 80)
-        print(f"Total judges tested:     {stats['total']}")
-        print(f"Correct matches:         {stats['correct']} ({stats['accuracy']:.1f}%)")
-        print(f"Wrong matches:           {stats['wrong']}")
-        print(f"Not found (should exist): {stats['not_found']}")
-        print(f"False positives:         {stats['false_positive']}")
-        print()
-        print(f"Profile finding accuracy: {stats['profile_accuracy']:.1f}%")
-        print(f"  (Among judges with known profiles, correctly found {stats['profile_accuracy']:.0f}%)")
+        print(f"Total: {stats['total']} | Correct: {stats['correct']} ({stats['accuracy']:.1f}%) | "
+              f"Wrong: {stats['wrong']} | Not Found: {stats['not_found']} | False Pos: {stats['false_positive']}")
+        print(f"Profile Accuracy: {stats['profile_accuracy']:.1f}%")
         print("=" * 80)
 
 
 async def main():
-    """Main entry point."""
-    import argparse
+    """Main entry point - runs benchmark fast."""
+    use_gemini = bool(os.environ.get("GEMINI_API_KEY"))
     
-    parser = argparse.ArgumentParser(description="LinkedIn Matching Benchmark")
-    parser.add_argument(
-        "--gemini", "-g",
-        action="store_true",
-        help="Enable Gemini verification (requires GEMINI_API_KEY)"
-    )
-    parser.add_argument(
-        "--quiet", "-q",
-        action="store_true",
-        help="Only print summary statistics"
-    )
-    parser.add_argument(
-        "--csv", "-c",
-        type=str,
-        default=None,
-        help="Path to CSV file (default: benchmarks.csv in same directory)"
-    )
-    parser.add_argument(
-        "--limit", "-l",
-        type=int,
-        default=None,
-        help="Limit number of test cases to run"
-    )
+    if use_gemini:
+        print("Note: Using Gemini verification (fast parallel mode)\n")
+    else:
+        print("Note: No Gemini - running basic mode\n")
     
-    args = parser.parse_args()
-    
-    if args.gemini and not os.environ.get("GEMINI_API_KEY"):
-        print("Error: GEMINI_API_KEY environment variable required for --gemini")
-        sys.exit(1)
-    
-    benchmark = LinkedInBenchmark(
-        use_gemini_verification=args.gemini,
-        csv_path=args.csv
-    )
-    await benchmark.run(verbose=not args.quiet, limit=args.limit)
+    benchmark = LinkedInBenchmark(use_gemini_verification=use_gemini)
+    await benchmark.run()
 
 
 if __name__ == "__main__":

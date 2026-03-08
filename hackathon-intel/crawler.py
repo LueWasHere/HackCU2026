@@ -422,159 +422,89 @@ class HackathonCrawler:
 
     async def worker_linkedin(self, name: str, company: str = "", title: str = "",
                                analyzer=None) -> dict:
-        """Find and crawl LinkedIn profile with Gemini verification for 100% accuracy."""
+        """Find LinkedIn profile - FAST version with minimal API calls."""
         name, company, title = _clean(name), _clean(company), _clean(title)
         if not name:
             return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
 
-        async def _collect_candidates(search_query: str, max_results: int, seen_urls: set) -> list[dict]:
-            """Collect candidates without verification - just gather all possibilities."""
-            urls = await self._search_duckduckgo(search_query, max_results=max_results)
-            linkedin_urls = [u for u in urls if _is_linkedin_profile_url(u)]
-            
-            candidates = []
-            for u in linkedin_urls[:5]:  # Check top 5 per query
-                normalized = _normalize_linkedin_url(u)
-                if not normalized or normalized in seen_urls:
-                    continue
-                seen_urls.add(normalized)
-                
-                data = await self._crawl_url(u, timeout=15, content_limit=6000)
-                if not isinstance(data, dict):
-                    continue
-                
-                content = data.get("content", "")
-                if len(content) < 100:
-                    continue
-                
-                # Basic scoring
-                score = _score_linkedin_candidate(normalized, content, name, company, title)
-                if score < 10:  # Moderate threshold
-                    continue
-                
-                photo_url = _extract_linkedin_photo(content)
-                candidates.append({
-                    "url": normalized,
-                    "content": content[:6000],
-                    "photo_url": photo_url,
-                    "score": score,
-                })
-            
-            return candidates
-
-        # Phase 1: Collect candidates from multiple search strategies
-        all_candidates = []
+        # Just ONE search query with name + company (or just name)
+        if company:
+            search_query = f'"{name}" {company} site:linkedin.com/in'
+        else:
+            search_query = f'"{name}" site:linkedin.com/in'
+        
+        urls = await self._search_duckduckgo(search_query, max_results=5)
+        linkedin_urls = [u for u in urls if _is_linkedin_profile_url(u)]
+        
+        if not linkedin_urls:
+            return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
+        
+        # Check only the top 3 URLs
+        candidates = []
         seen_urls = set()
         
-        # Try 1: Specific search with name, title, company
-        query1 = f'"{name}" {title} {company} site:linkedin.com/in'
-        all_candidates.extend(await _collect_candidates(query1, 6, seen_urls))
-        
-        # Try 2: Name + company
-        if company:
-            query2 = f'"{name}" {company} site:linkedin.com/in'
-            all_candidates.extend(await _collect_candidates(query2, 6, seen_urls))
-        
-        # Try 3: Name + title keywords
-        if title:
-            title_keywords = " ".join(_name_tokens(title)[:3])
-            query3 = f'"{name}" {title_keywords} site:linkedin.com/in'
-            all_candidates.extend(await _collect_candidates(query3, 6, seen_urls))
-        
-        # Try 4: Name only
-        query4 = f'"{name}" site:linkedin.com/in'
-        all_candidates.extend(await _collect_candidates(query4, 8, seen_urls))
-        
-        # Try 5: Direct URL patterns
-        slug = re.sub(r"[^a-z0-9]", "-", name.lower()).strip("-")
-        direct_urls = [
-            f"https://www.linkedin.com/in/{slug}/",
-            f"https://www.linkedin.com/in/{slug.replace('-', '')}/",
-        ]
-        for u in direct_urls:
+        for u in linkedin_urls[:3]:
             normalized = _normalize_linkedin_url(u)
-            if normalized in seen_urls:
+            if not normalized or normalized in seen_urls:
                 continue
             seen_urls.add(normalized)
             
-            data = await self._crawl_url(u, timeout=18, content_limit=8000)
-            if isinstance(data, dict) and data.get("content") and len(data["content"]) > 100:
-                score = _score_linkedin_candidate(normalized, data["content"], name, company, title)
-                if score >= 5:
-                    all_candidates.append({
-                        "url": normalized,
-                        "content": data["content"][:8000],
-                        "photo_url": _extract_linkedin_photo(data["content"]),
-                        "score": score,
-                    })
+            # Fast crawl with short timeout
+            data = await self._crawl_url(u, timeout=12, content_limit=4000)
+            if not isinstance(data, dict):
+                continue
+            
+            content = data.get("content", "")
+            if len(content) < 100:
+                continue
+            
+            # Score it
+            score = _score_linkedin_candidate(normalized, content, name, company, title)
+            if score < 15:  # Higher threshold - only good matches
+                continue
+            
+            photo_url = _extract_linkedin_photo(content)
+            candidates.append({
+                "url": normalized,
+                "content": content[:4000],
+                "photo_url": photo_url,
+                "score": score,
+            })
         
-        if not all_candidates:
-            logger.info(f"[linkedin] no candidates found for '{name}'")
+        if not candidates:
             return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
         
         # Sort by score
-        all_candidates.sort(key=lambda x: x["score"], reverse=True)
+        candidates.sort(key=lambda x: x["score"], reverse=True)
         
-        # Phase 2: Gemini verification for 100% accuracy
+        # With Gemini: verify only the top 2 candidates max
         if analyzer:
-            logger.info(f"[linkedin] verifying {len(all_candidates)} candidates for '{name}' with Gemini...")
-            
-            # Verify top candidates (up to 5) to find the correct one
-            verified_candidates = []
-            for candidate in all_candidates[:5]:
+            # Verify top 2 candidates only
+            for candidate in candidates[:2]:
                 try:
                     verification = await analyzer.verify_linkedin_match(
                         name, company, title, candidate["content"]
                     )
-                    is_match = verification.get("is_match", False)
-                    confidence = verification.get("confidence", "low")
-                    reasoning = verification.get("reasoning", "")
-                    
-                    if is_match:
-                        logger.info(f"[linkedin] ✅ Gemini verified '{name}': {candidate['url']} (confidence: {confidence})")
-                        candidate["gemini_confidence"] = confidence
-                        candidate["gemini_reasoning"] = reasoning
-                        verified_candidates.append(candidate)
-                        
-                        # Don't break - verify all to find the best match
-                    else:
-                        logger.info(f"[linkedin] ❌ Gemini rejected '{name}': {candidate['url']} - {reasoning[:80]}")
-                        
-                except Exception as e:
-                    logger.warning(f"[linkedin] Gemini verification error for '{name}': {e}")
+                    if verification.get("is_match", False):
+                        return {
+                            "source": "linkedin",
+                            "content": candidate["content"],
+                            "sources": [candidate["url"]],
+                            "linkedin_url": candidate["url"],
+                            "photo_url": candidate["photo_url"],
+                        }
+                except Exception:
                     continue
             
-            if verified_candidates:
-                # Sort by Gemini confidence then score
-                confidence_order = {"high": 3, "medium": 2, "low": 1}
-                verified_candidates.sort(
-                    key=lambda x: (confidence_order.get(x.get("gemini_confidence", "low"), 0), x["score"]),
-                    reverse=True
-                )
-                
-                top = verified_candidates[0]
-                logger.info(f"[linkedin] selected verified profile for '{name}': {top['url']} (confidence: {top.get('gemini_confidence', 'unknown')})")
-                
-                return {
-                    "source": "linkedin",
-                    "content": top["content"],
-                    "sources": [c["url"] for c in verified_candidates[:3]],
-                    "linkedin_url": top["url"],
-                    "photo_url": top["photo_url"],
-                }
-            else:
-                # No candidate passed Gemini verification
-                logger.info(f"[linkedin] no candidate passed Gemini verification for '{name}' - returning empty")
-                return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
+            # No candidate passed verification
+            return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
         
-        # No analyzer available - use top scoring candidate (less accurate)
-        top = all_candidates[0]
-        logger.info(f"[linkedin] no Gemini verification, using top score for '{name}': {top['url']}")
-        
+        # No analyzer - return top candidate
+        top = candidates[0]
         return {
             "source": "linkedin",
             "content": top["content"],
-            "sources": [c["url"] for c in all_candidates[:3]],
+            "sources": [c["url"] for c in candidates[:2]],
             "linkedin_url": top["url"],
             "photo_url": top["photo_url"],
         }
