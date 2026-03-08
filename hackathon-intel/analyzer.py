@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Semaphore to avoid blasting Gemini API with too many concurrent requests
-_gemini_semaphore = asyncio.Semaphore(12)
+_gemini_semaphore = asyncio.Semaphore(20)
 
 # ── JSON Schemas ──────────────────────────────────────────────────────────────
 
@@ -208,7 +208,7 @@ class HackathonAnalyzer:
                     for kw in ("token", "limit", "too long", "too large", "max_tokens", "context_length", "quota")
                 ):
                     raise
-                logger.warning(f"[_generate] Gemini error: {e}")
+                logger.error(f"[_generate] Gemini error: {type(e).__name__}: {e}")
                 return {}
 
         try:

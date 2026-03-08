@@ -379,33 +379,87 @@ class HackathonCrawler:
                 "url": url, "success": False}
 
     async def _search_google_jina(self, query: str, max_results: int = 6) -> list[str]:
-        """Search Google via jina.ai - returns LinkedIn URLs found in results."""
-        google_url = f"https://www.google.com/search?q={quote(query)}&num={max_results + 4}"
-        jina_url = f"https://r.jina.ai/{google_url}"
+        """Search DuckDuckGo via jina.ai - returns URLs found in results.
+        
+        NOTE: Switched from Google to DuckDuckGo because Google blocked r.jina.ai
+        with "DDoS attack suspected" error.
+        """
+        # Use DuckDuckGo HTML search (Google is blocked via jina.ai)
+        ddg_url = f"https://duckduckgo.com/html/?q={quote(query)}"
+        jina_url = f"https://r.jina.ai/{ddg_url}"
         try:
             result = await self._crawl_url(jina_url, timeout=20, content_limit=20000)
             content = result.get("content", "")
-            
-            # Extract LinkedIn URLs
-            urls = re.findall(r'https?://(?:[a-z]{2,3}\.)?linkedin\.com/in/[^\s)\]"\'<>]+', content)
-            
+
+            # Extract ALL URLs from the search results
+            all_urls = re.findall(r'https?://[^\s)\]"\'<>]+', content)
+
             out = []
             seen = set()
-            for u in urls:
-                cleaned = _normalize_candidate_url(u)
-                if cleaned and cleaned not in seen and _is_linkedin_profile_url(cleaned):
-                    norm = _normalize_linkedin_url(cleaned)
-                    if norm and norm not in seen:
-                        seen.add(norm)
-                        seen.add(cleaned)
-                        out.append(cleaned)
-                        if len(out) >= max_results:
-                            break
+            for u in all_urls:
+                # Decode DuckDuckGo redirect URLs
+                decoded = _decode_ddg_redirect(u) or u
+                cleaned = _normalize_candidate_url(decoded)
+                if not cleaned:
+                    continue
+                if not _looks_like_search_result_url(cleaned):
+                    continue
+                # Skip jina.ai and duckduckgo URLs themselves
+                if "jina.ai" in cleaned.lower() or "duckduckgo.com" in cleaned.lower():
+                    continue
+                if cleaned in seen:
+                    continue
+                seen.add(cleaned)
+                out.append(cleaned)
+                if len(out) >= max_results:
+                    break
 
             logger.info(f"[search] '{query[:50]}' -> {len(out)} results")
             return out
         except Exception as e:
             logger.info(f"[search] failed: {e}")
+            return []
+
+    async def _search_linkedin_jina(self, query: str, max_results: int = 6) -> list[str]:
+        """Search DuckDuckGo via jina.ai - returns only LinkedIn profile URLs.
+        
+        NOTE: Switched from Google to DuckDuckGo because Google blocked r.jina.ai.
+        """
+        ddg_url = f"https://duckduckgo.com/html/?q={quote(query)}"
+        jina_url = f"https://r.jina.ai/{ddg_url}"
+        try:
+            result = await self._crawl_url(jina_url, timeout=20, content_limit=20000)
+            content = result.get("content", "")
+
+            # Extract ALL URLs first (DuckDuckGo wraps results in redirect URLs)
+            all_urls = re.findall(r'https?://[^\s)\]"\'<>]+', content)
+            
+            out = []
+            seen = set()
+            for u in all_urls:
+                # Decode DuckDuckGo redirect URLs to get actual LinkedIn URLs
+                decoded = _decode_ddg_redirect(u) or u
+                
+                # Check if it's a LinkedIn profile URL
+                if not _is_linkedin_profile_url(decoded):
+                    continue
+                    
+                cleaned = _normalize_candidate_url(decoded)
+                if not cleaned or cleaned in seen:
+                    continue
+                    
+                norm = _normalize_linkedin_url(cleaned)
+                if norm and norm not in seen:
+                    seen.add(norm)
+                    seen.add(cleaned)
+                    out.append(cleaned)
+                    if len(out) >= max_results:
+                        break
+
+            logger.info(f"[search-linkedin] '{query[:50]}' -> {len(out)} results")
+            return out
+        except Exception as e:
+            logger.info(f"[search-linkedin] failed: {e}")
             return []
 
     async def _fetch_profile_content(self, url: str) -> dict:
@@ -524,16 +578,16 @@ class HackathonCrawler:
             line_clean = re.sub(r'View Bio.*$', '', line_without_url)
             
             # Extract name: look for 2-3 capitalized words at the start
-            # Handle names with optional quotes like Matt "Kelly" Williams
-            
+            # Handle names with optional quotes, hyphens, apostrophes, short names
+
             # Try 3 words with optional quotes (e.g., "Matt \"Kelly\" Williams", "Megan La Grave")
-            name_match = re.match(r'^([A-Z][a-z]+\s+"?[A-Z][a-z]+"?\s+[A-Z][a-z]+)', line_clean)
+            name_match = re.match(r'^([A-Z][a-zA-Z\'\-]+\s+"?[A-Z][a-zA-Z\'\-]+"?\s+[A-Z][a-zA-Z\'\-]+)', line_clean)
             if name_match:
                 name = name_match.group(1).replace('"', '')
                 judge_urls[name.lower()] = url
             else:
                 # Try 2 words
-                name_match = re.match(r'^([A-Z][a-z]+\s+[A-Z][a-z]+)', line_clean)
+                name_match = re.match(r'^([A-Z][a-zA-Z\'\-]+\s+[A-Z][a-zA-Z\'\-]+)', line_clean)
                 if name_match:
                     name = name_match.group(1)
                     judge_urls[name.lower()] = url
@@ -636,20 +690,17 @@ class HackathonCrawler:
                                         photo_url = judge_photos[judge_name]
                                         logger.info(f"[linkedin] Found photo on page: {name} -> {photo_url}")
                                     break
-                                    break
             except Exception as e:
                 logger.warning(f"[linkedin] Failed to extract from hackathon page: {e}")
 
         # === Phase 2: Search for LinkedIn profiles (if not found on page) ===
-        # ONLY search if we don't have a hackathon page URL
-        # If we have a hackathon page and the judge isn't on it, they likely don't have a LinkedIn
-        if not linkedin_urls and not hackathon_page_url:
+        if not linkedin_urls:
             queries = []
             if company:
                 queries.append(f'"{name}" {company} linkedin')
             queries.append(f'"{name}" site:linkedin.com/in')
             
-            search_tasks = [self._search_google_jina(q, max_results=6) for q in queries[:2]]
+            search_tasks = [self._search_linkedin_jina(q, max_results=6) for q in queries[:2]]
             search_results = await asyncio.gather(*search_tasks)
             
             for urls in search_results:
@@ -659,8 +710,8 @@ class HackathonCrawler:
                         seen_urls.add(norm)
                         linkedin_urls.append(u)
 
-        # === Phase 3: Add direct URL patterns (if still not found and no hackathon page) ===
-        if not linkedin_urls and not hackathon_page_url:
+        # === Phase 3: Add direct URL patterns (if still not found) ===
+        if not linkedin_urls:
             direct_urls = self._generate_linkedin_urls(name, company)
             
             for variant in self._generate_name_variants(name):

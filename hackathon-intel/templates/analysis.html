@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analysis — JudgeIntel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg: #060b14;
+      --bg2: #0b1220;
+      --bg3: #0f1929;
+      --border: #1a2740;
+      --border2: #243451;
+      --text: #dce8f5;
+      --text2: #7a92b0;
+      --text3: #3d5470;
+      --accent: #00c8a0;
+      --accent2: #00a882;
+      --amber: #f0b429;
+      --red: #f56565;
+      --blue: #4da6ff;
+      --purple: #9b7fe8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4, .font-syne { font-family: 'Syne', sans-serif; }
+    .font-serif { font-family: 'Instrument Serif', serif; }
+
+    /* ── Ambient background ──────────────────────────────────── */
+    .page-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0,200,160,0.05) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 85% 20%, rgba(77,166,255,0.04) 0%, transparent 50%),
+        radial-gradient(ellipse 50% 40% at 15% 80%, rgba(155,127,232,0.03) 0%, transparent 50%);
+    }
+    .page-bg::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle 400px at 70% 20%, rgba(0,200,160,0.06) 0%, transparent 100%),
+        radial-gradient(circle 300px at 25% 70%, rgba(155,127,232,0.04) 0%, transparent 100%);
+      animation: orbDrift 16s ease-in-out infinite alternate;
+    }
+    @keyframes orbDrift {
+      0% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(30px, -20px) scale(1.06); }
+      100% { transform: translate(-15px, 12px) scale(0.97); }
+    }
+
+    /* ── Glow / shine effects ────────────────────────────────── */
+    .glow-accent { box-shadow: 0 0 40px rgba(0,200,160,0.12), 0 0 80px rgba(0,200,160,0.04); }
+    .glow-amber { box-shadow: 0 0 30px rgba(240,180,41,0.1); }
+
+    /* ── Buttons ─────────────────────────────────────────────── */
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #00b090);
+      color: #060b14;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: all 0.3s;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      text-decoration: none;
+    }
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%);
+      transform: translateX(-100%);
+      transition: transform 0.6s;
+    }
+    .btn-primary:hover::after { transform: translateX(100%); }
+    .btn-primary:hover { box-shadow: 0 4px 24px rgba(0,200,160,0.35); transform: translateY(-1px); }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text2);
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      transition: all 0.25s;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-ghost:hover {
+      border-color: rgba(0,200,160,0.4);
+      color: var(--accent);
+      background: rgba(0,200,160,0.04);
+    }
+
+    /* ── Cards ────────────────────────────────────────────────── */
+    .card {
+      background: rgba(11, 18, 32, 0.65);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+    }
+    .card-hover:hover {
+      border-color: var(--border2);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .card-glow:hover {
+      border-color: rgba(0,200,160,0.3);
+      box-shadow: 0 0 30px rgba(0,200,160,0.06), 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    /* ── Chips ────────────────────────────────────────────────── */
+    .chip {
+      background: rgba(0,200,160,0.08);
+      border: 1px solid rgba(0,200,160,0.2);
+      color: var(--accent);
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      display: inline-block;
+    }
+    .chip-amber { background: rgba(240,180,41,0.08); border-color: rgba(240,180,41,0.2); color: var(--amber); }
+    .chip-red { background: rgba(245,101,101,0.08); border-color: rgba(245,101,101,0.2); color: var(--red); }
+    .chip-blue { background: rgba(77,166,255,0.08); border-color: rgba(77,166,255,0.2); color: var(--blue); }
+    .chip-purple { background: rgba(155,127,232,0.08); border-color: rgba(155,127,232,0.2); color: var(--purple); }
+    .chip-gray { background: rgba(122,146,176,0.06); border-color: rgba(122,146,176,0.15); color: var(--text2); }
+
+    /* ── Progress ─────────────────────────────────────────────── */
+    .log-line {
+      border-left: 2px solid var(--border);
+      padding: 6px 0 6px 14px;
+      animation: fadeSlideIn 0.35s ease forwards;
+      opacity: 0;
+    }
+    .log-line.done { border-left-color: var(--accent); }
+    .log-line.error { border-left-color: var(--red); }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    .pulse { animation: pulse-dot 1.4s ease infinite; }
+
+    .prog-bar {
+      height: 4px;
+      background: var(--bg3);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+    .prog-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--blue));
+      border-radius: 2px;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+    .prog-fill::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: -1px;
+      width: 40px;
+      height: 6px;
+      background: linear-gradient(90deg, transparent, rgba(0,200,160,0.6));
+      border-radius: 3px;
+      filter: blur(3px);
+    }
+
+    /* Judge discovery item */
+    .judge-disc {
+      transition: all 0.3s;
+      border: 1px solid var(--border);
+    }
+    .judge-disc.status-researching { border-color: rgba(240,180,41,0.3); }
+    .judge-disc.status-complete { border-color: rgba(0,200,160,0.3); }
+    .judge-disc.status-error { border-color: rgba(245,101,101,0.3); }
+
+    /* ── Results ──────────────────────────────────────────────── */
+    .judge-detail { display: none; }
+    .judge-card.open .judge-detail { display: block; }
+    .judge-card.open .judge-chevron { transform: rotate(180deg); }
+    .judge-chevron { transition: transform 0.25s; }
+
+    .rank-badge {
+      width: 32px; height: 32px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 14px;
+    }
+    .rank-1 { background: rgba(240,180,41,0.15); color: var(--amber); border: 1px solid rgba(240,180,41,0.3); }
+    .rank-2 { background: rgba(192,192,210,0.1); color: #b0b8c8; border: 1px solid rgba(192,192,210,0.2); }
+    .rank-3 { background: rgba(240,140,80,0.1); color: #f09050; border: 1px solid rgba(240,140,80,0.25); }
+    .rank-n { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); }
+
+    .stat-bar-fill {
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--blue));
+      transition: width 1s ease;
+    }
+
+    .section-reveal {
+      animation: sectionIn 0.5s ease forwards;
+      opacity: 0;
+    }
+    @keyframes sectionIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Scrollbar ────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+    /* ── Tooltips ─────────────────────────────────────────────── */
+    .tooltip { position: relative; }
+    .tooltip:hover .tt { display: block; }
+    .tt {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 5px;
+      white-space: nowrap;
+      z-index: 100;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    .confid-high { color: var(--accent); }
+    .confid-medium { color: var(--amber); }
+    .confid-low { color: var(--red); }
+
+    /* ── Section divider ─────────────────────────────────────── */
+    .section-label {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text3);
+    }
+    .section-label-accent { color: var(--accent); }
+
+    /* ── Stat number ─────────────────────────────────────────── */
+    .stat-num {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 28px;
+      line-height: 1;
+      background: linear-gradient(135deg, var(--accent), var(--blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ── Fade transition between progress → results ──────────── */
+    .fade-out {
+      animation: fadeOut 0.4s ease forwards;
+    }
+    @keyframes fadeOut {
+      to { opacity: 0; transform: translateY(-10px); }
+    }
+    .fade-in {
+      animation: fadeIn 0.5s ease 0.3s forwards;
+      opacity: 0;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+
+<body>
+<div class="page-bg"></div>
+
+<!-- ── Top Nav ─────────────────────────────────────────────────────── -->
+<nav class="fixed top-0 left-0 right-0 z-30 border-b border-[#1a2740]/50 bg-[#060b14]/80 backdrop-blur-2xl">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-3 group">
+      <div class="w-7 h-7 rounded-md flex items-center justify-center transition-transform group-hover:scale-110" style="background: var(--accent)">
+        <span style="color:#060b14; font-size:11px; font-weight:800; font-family:'Syne',sans-serif;">JI</span>
+      </div>
+      <span class="font-syne font-bold text-sm tracking-wider text-white group-hover:text-[#00c8a0] transition-colors">JUDGEINTEL</span>
+    </a>
+    <a href="/" class="btn-ghost px-5 py-2 rounded-lg flex items-center gap-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      New Analysis
+    </a>
+  </div>
+</nav>
+
+<!-- ── Main Content ────────────────────────────────────────────────── -->
+<main class="pt-14 min-h-screen relative z-10">
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- PROGRESS SECTION                                                -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <section id="progress-section" class="px-6 pt-10 pb-16 max-w-5xl mx-auto">
+
+    <!-- Page header during analysis -->
+    <div class="text-center mb-10 section-reveal">
+      <div class="inline-flex items-center gap-2.5 mb-5 px-5 py-2 rounded-full"
+           style="background: rgba(0,200,160,0.06); border: 1px solid rgba(0,200,160,0.15);">
+        <span id="header-dot" class="w-2 h-2 rounded-full bg-[#00c8a0] pulse inline-block"></span>
+        <span class="text-[11px] text-[#7a92b0] font-mono">Analyzing hackathon...</span>
+      </div>
+      <h1 class="font-syne font-extrabold text-3xl md:text-4xl text-white mb-2">
+        Building Your <span class="font-serif italic" style="background: linear-gradient(135deg, #00c8a0, #4da6ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Intelligence Report</span>
+      </h1>
+      <p class="text-[#7a92b0] text-sm max-w-lg mx-auto">
+        Crawling the event page, identifying judges, and researching each one across the web.
+      </p>
+    </div>
+
+    <!-- Hackathon found banner -->
+    <div id="hackathon-banner" class="hidden section-reveal mb-8">
+      <div class="card rounded-2xl p-6 relative overflow-hidden" style="border-color: rgba(0,200,160,0.2)">
+        <div class="absolute top-0 left-0 right-0 h-[2px]" style="background: linear-gradient(90deg, var(--accent), var(--blue), var(--purple))"></div>
+        <div class="flex items-start justify-between gap-6">
+          <div>
+            <div class="flex items-center gap-2 mb-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c8a0" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              <span class="section-label section-label-accent">Hackathon Detected</span>
+            </div>
+            <h2 id="hack-name" class="font-syne font-extrabold text-2xl text-white mb-1"></h2>
+            <p id="hack-theme" class="text-[#7a92b0] text-xs leading-relaxed max-w-lg"></p>
+          </div>
+          <div id="hack-meta" class="text-right text-xs text-[#7a92b0] space-y-1 shrink-0"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress + Judges grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+      <!-- Left: Live progress log (wider) -->
+      <div class="lg:col-span-3 card rounded-2xl p-6 relative overflow-hidden" id="progress-card">
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center gap-3">
+            <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-[#00c8a0] pulse inline-block"></span>
+            <span class="section-label">Live Progress</span>
+          </div>
+          <span id="prog-pct" class="font-syne font-bold text-sm text-[#00c8a0]">5%</span>
+        </div>
+
+        <div id="progress-log" class="space-y-0 max-h-[280px] overflow-y-auto mb-5 pr-2"></div>
+
+        <div>
+          <div class="prog-bar">
+            <div id="prog-fill" class="prog-fill" style="width: 5%"></div>
+          </div>
+          <p id="prog-label" class="text-[11px] text-[#3d5470] mt-2">Connecting to analysis pipeline...</p>
+        </div>
+      </div>
+
+      <!-- Right: Judge discovery (narrower) -->
+      <div class="lg:col-span-2 card rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center gap-3">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7a92b0" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="section-label">Judges Found</span>
+          </div>
+          <span id="judge-count-badge" class="chip text-[10px] font-bold">0</span>
+        </div>
+        <div id="judge-discovery-list" class="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+          <div class="flex items-center justify-center py-8 text-[#3d5470] text-xs">
+            <span>Waiting for judge data...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- RESULTS SECTION                                                  -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <section id="results-section" class="hidden">
+
+    <!-- ── Hackathon Header Banner ────────────────────────────────── -->
+    <div id="results-header" class="relative overflow-hidden border-b border-[#1a2740]">
+      <div class="absolute inset-0" style="background: linear-gradient(180deg, rgba(0,200,160,0.04) 0%, transparent 60%)"></div>
+      <div class="relative max-w-7xl mx-auto px-6 pt-10 pb-8">
+        <div class="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-6">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2.5 mb-3">
+              <div class="w-2.5 h-2.5 rounded-full bg-[#00c8a0]"></div>
+              <span class="section-label section-label-accent">Analysis Complete</span>
+            </div>
+            <h1 id="results-hack-name" class="font-syne font-extrabold text-3xl md:text-4xl text-white mb-3"></h1>
+            <p id="results-hack-desc" class="text-sm text-[#7a92b0] leading-relaxed max-w-2xl"></p>
+          </div>
+          <a href="/" class="btn-primary px-6 py-3 rounded-lg flex items-center gap-2 shrink-0 self-start">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Analysis
+          </a>
+        </div>
+
+        <!-- Hackathon meta chips -->
+        <div id="results-hack-meta" class="flex flex-wrap items-center gap-3"></div>
+
+        <!-- Stats bar -->
+        <div id="quick-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6"></div>
+      </div>
+    </div>
+
+    <!-- ── Main Results Body ──────────────────────────────────────── -->
+    <div class="max-w-7xl mx-auto px-6 pt-8 pb-16 space-y-8">
+
+      <!-- ── Row 1: Opportunity + Panel Style ─────────────────────── -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+        <!-- Biggest Opportunity (wider) -->
+        <div class="lg:col-span-3 card card-hover rounded-2xl p-7 section-reveal glow-accent" style="border-color: rgba(0,200,160,0.2)">
+          <div class="flex items-center gap-2.5 mb-5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(0,200,160,0.1); border: 1px solid rgba(0,200,160,0.2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c8a0" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </div>
+            <div>
+              <span class="section-label section-label-accent">Biggest Opportunity</span>
+              <p class="text-[10px] text-[#3d5470]">What this panel is most likely to fund</p>
+            </div>
+          </div>
+          <div id="opportunity-card" class="text-sm text-white leading-relaxed"></div>
+        </div>
+
+        <!-- Panel Summary (narrower) -->
+        <div class="lg:col-span-2 card card-hover rounded-2xl p-7 section-reveal" style="animation-delay: 0.05s">
+          <div class="flex items-center gap-2.5 mb-5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(155,127,232,0.1); border: 1px solid rgba(155,127,232,0.2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9b7fe8" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div>
+              <span class="section-label" style="color: var(--purple)">Panel Profile</span>
+              <p class="text-[10px] text-[#3d5470]">Who the judges are collectively</p>
+            </div>
+          </div>
+          <div id="panel-summary-card"></div>
+        </div>
+      </div>
+
+      <!-- ── Row 2: What They Like / Dislike ──────────────────────── -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="card card-hover rounded-2xl p-7 section-reveal" style="animation-delay: 0.1s">
+          <div class="flex items-center gap-2.5 mb-5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(0,200,160,0.1); border: 1px solid rgba(0,200,160,0.2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c8a0" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/></svg>
+            </div>
+            <div>
+              <span class="section-label section-label-accent">What They Value</span>
+              <p class="text-[10px] text-[#3d5470]">Shared preferences across all judges</p>
+            </div>
+          </div>
+          <div id="consensus-liked" class="space-y-3"></div>
+        </div>
+
+        <div class="card card-hover rounded-2xl p-7 section-reveal" style="animation-delay: 0.15s">
+          <div class="flex items-center gap-2.5 mb-5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(245,101,101,0.1); border: 1px solid rgba(245,101,101,0.2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f56565" stroke-width="2" style="transform: scaleY(-1)"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/></svg>
+            </div>
+            <div>
+              <span class="section-label" style="color: var(--red)">What They Penalize</span>
+              <p class="text-[10px] text-[#3d5470]">Common turn-offs to avoid</p>
+            </div>
+          </div>
+          <div id="consensus-disliked" class="space-y-3"></div>
+        </div>
+      </div>
+
+      <!-- ── Row 3: Industries + Technologies ─────────────────────── -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div class="lg:col-span-3 card card-hover rounded-2xl p-7 section-reveal" style="animation-delay: 0.2s">
+          <div class="flex items-center gap-2.5 mb-6">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(77,166,255,0.1); border: 1px solid rgba(77,166,255,0.2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4da6ff" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </div>
+            <div>
+              <span class="section-label" style="color: var(--blue)">Top Industries</span>
+              <p class="text-[10px] text-[#3d5470]">Where judges have the most expertise</p>
+            </div>
+          </div>
+          <div id="industries-chart" class="space-y-4"></div>
+        </div>
+
+        <div class="lg:col-span-2 card card-hover rounded-2xl p-7 section-reveal" style="animation-delay: 0.25s">
+          <div class="flex items-center gap-2.5 mb-6">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(240,180,41,0.1); border: 1px solid rgba(240,180,41,0.2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f0b429" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </div>
+            <div>
+              <span class="section-label" style="color: var(--amber)">Technologies</span>
+              <p class="text-[10px] text-[#3d5470]">Tech they know and value</p>
+            </div>
+          </div>
+          <div id="tech-chips" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <!-- ── Section: Judges ──────────────────────────────────────── -->
+      <div>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background: rgba(0,200,160,0.08); border: 1px solid rgba(0,200,160,0.15)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00c8a0" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div>
+            <h2 class="font-syne font-extrabold text-xl text-white">Judge Profiles</h2>
+            <p class="text-xs text-[#3d5470]">Click any judge to expand their full intel report</p>
+          </div>
+          <span id="judge-total-badge" class="chip text-[10px] font-bold ml-auto">0</span>
+        </div>
+        <div id="judges-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start"></div>
+      </div>
+
+      <!-- ── Section: Project Ideas ───────────────────────────────── -->
+      <div>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background: rgba(240,180,41,0.08); border: 1px solid rgba(240,180,41,0.15)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f0b429" stroke-width="2"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+          </div>
+          <div>
+            <h2 class="font-syne font-extrabold text-xl text-white">Project Ideas</h2>
+            <p class="text-xs text-[#3d5470]">Ranked by how well they fit this specific judge panel</p>
+          </div>
+        </div>
+        <div id="ideas-list" class="space-y-5"></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- ERROR SECTION                                                    -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <div id="error-section" class="hidden px-6 py-24 text-center max-w-md mx-auto">
+    <div class="card rounded-2xl p-10 text-center">
+      <div class="w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center" style="background: rgba(245,101,101,0.1); border: 1px solid rgba(245,101,101,0.2)">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f56565" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <h2 class="font-syne font-extrabold text-xl text-white mb-2">Analysis Failed</h2>
+      <p id="error-msg" class="text-[#7a92b0] text-sm mb-8 leading-relaxed"></p>
+      <a href="/" class="btn-primary px-8 py-3 rounded-lg inline-block">Try Again</a>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────
+const JOB_ID = "{{ job_id }}";
+let evtSource = null;
+let judgesData = [];
+let progressStep = 0;
+let totalExpectedSteps = 5;
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtList(arr, cls='') {
+  if (!arr || !arr.length) return '<p class="text-[#3d5470] text-xs">None noted</p>';
+  return arr.map(x => `<p class="text-xs text-[#dce8f5] flex gap-2 leading-relaxed"><span class="${cls} shrink-0">&rsaquo;</span>${esc(x)}</p>`).join('');
+}
+
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    if (!/^https?:$/.test(u.protocol)) return '';
+    u.search = ''; u.hash = '';
+    return u.toString();
+  } catch { return ''; }
+}
+
+function validLinkedinProfile(url) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return '';
+  try {
+    const u = new URL(normalized);
+    const host = u.hostname.toLowerCase();
+    const path = u.pathname.toLowerCase();
+    if (!host.includes('linkedin.com')) return '';
+    if (!(path.startsWith('/in/') || path.startsWith('/pub/'))) return '';
+    return normalized;
+  } catch { return ''; }
+}
+
+function timeNow() {
+  return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// ── SSE ──────────────────────────────────────────────────────────────────
+function listenSSE() {
+  evtSource = new EventSource(`/stream/${JOB_ID}`);
+
+  evtSource.onmessage = e => {
+    try { handleEvent(JSON.parse(e.data)); }
+    catch(ex) { console.error('SSE parse error', ex); }
+  };
+
+  evtSource.onerror = () => { evtSource.close(); };
+}
+
+function handleEvent(ev) {
+  switch(ev.type) {
+    case 'heartbeat': break;
+
+    case 'status':
+      addLog(ev.message, 'info');
+      progressStep++;
+      const pct = Math.min(10 + progressStep * 15, 85);
+      $('prog-fill').style.width = pct + '%';
+      $('prog-pct').textContent = pct + '%';
+      $('prog-label').textContent = ev.message;
+      break;
+
+    case 'hackathon_found':
+      showHackathonBanner(ev.hackathon);
+      break;
+
+    case 'judges_found':
+      $('judge-count-badge').textContent = ev.count;
+      $('judge-discovery-list').innerHTML = '';
+      addLog(`Discovered ${ev.count} judge${ev.count !== 1 ? 's' : ''} on the panel`, 'done');
+      ev.judges.forEach(j => addJudgeDiscovery(j));
+      totalExpectedSteps = 4 + ev.count * 2;
+      break;
+
+    case 'judge_start':
+      updateJudgeDiscovery(ev.judge_name, 'researching');
+      break;
+
+    case 'judge_research_done':
+      updateJudgeDiscovery(ev.judge_name, 'analyzed', `${ev.sources_found} source${ev.sources_found !== 1 ? 's' : ''}`);
+      break;
+
+    case 'judge_complete':
+      updateJudgeDiscovery(ev.judge_name, 'complete');
+      judgesData.push(ev.judge);
+      addLog(`${ev.judge_name} profiled successfully`, 'done');
+      break;
+
+    case 'judge_error':
+      updateJudgeDiscovery(ev.judge_name, 'error');
+      addLog(`${ev.judge_name}: ${ev.error}`, 'error');
+      break;
+
+    case 'complete':
+      evtSource.close();
+      $('status-dot').classList.remove('pulse');
+      $('status-dot').style.background = 'var(--accent)';
+      $('header-dot').classList.remove('pulse');
+      $('prog-fill').style.width = '100%';
+      $('prog-pct').textContent = '100%';
+      $('prog-label').textContent = 'Analysis complete!';
+      addLog('Intelligence report ready', 'done');
+      setTimeout(() => transitionToResults(ev.data), 1000);
+      break;
+
+    case 'error':
+      evtSource.close();
+      showError(ev.message);
+      break;
+  }
+}
+
+// ── Progress UI helpers ──────────────────────────────────────────────────
+function addLog(msg, type='info') {
+  const div = document.createElement('div');
+  div.className = `log-line ${type}`;
+  const colors = { done: '#00c8a0', error: '#f56565', info: '#7a92b0' };
+  const icons = { done: '&#10003;', error: '&#10007;', info: '&#8250;' };
+  div.innerHTML = `
+    <div class="flex items-start gap-2.5">
+      <span class="text-[10px] shrink-0 mt-0.5" style="color:${colors[type]}">${icons[type]}</span>
+      <span class="text-xs flex-1" style="color: ${type === 'done' ? '#dce8f5' : type === 'error' ? '#f56565' : '#7a92b0'}">${esc(msg)}</span>
+      <span class="text-[9px] shrink-0 mt-0.5" style="color:#3d5470">${timeNow()}</span>
+    </div>`;
+  $('progress-log').appendChild(div);
+  $('progress-log').scrollTop = $('progress-log').scrollHeight;
+}
+
+function showHackathonBanner(h) {
+  $('hack-name').textContent = h.name || 'Hackathon';
+  $('hack-theme').textContent = h.theme || h.description || '';
+  const meta = [];
+  if (h.organizer) meta.push(`<div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>${esc(h.organizer)}</div>`);
+  if (h.location) meta.push(`<div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${esc(h.location)}</div>`);
+  if (h.dates?.submission_deadline) meta.push(`<div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Due: ${esc(h.dates.submission_deadline)}</div>`);
+  $('hack-meta').innerHTML = meta.join('');
+  $('hackathon-banner').classList.remove('hidden');
+
+  // Update page header
+  document.querySelector('#progress-section h1').innerHTML = `Analyzing <span class="font-serif italic" style="background: linear-gradient(135deg, #00c8a0, #4da6ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">${esc(h.name || 'Hackathon')}</span>`;
+}
+
+function addJudgeDiscovery(j) {
+  const id = `jd-${j.name.replace(/\s+/g, '-').toLowerCase()}`;
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = 'judge-disc flex items-center gap-3 p-3 rounded-xl bg-[#0b1220]/50';
+  div.innerHTML = `
+    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
+         style="background: rgba(0,200,160,0.1); color: var(--accent); font-family: 'Syne', sans-serif; font-weight: 800">
+      ${esc(j.name.charAt(0))}
+    </div>
+    <div class="flex-1 min-w-0">
+      <p class="text-xs font-semibold text-white truncate">${esc(j.name)}</p>
+      <p class="text-[10px] text-[#3d5470] truncate">${esc(j.title || '')}${j.company ? ' &middot; ' + esc(j.company) : ''}</p>
+    </div>
+    <span id="${id}-status" class="text-[10px] text-[#3d5470] shrink-0 flex items-center gap-1">
+      <span class="w-1.5 h-1.5 rounded-full bg-[#3d5470] inline-block"></span>queued
+    </span>
+  `;
+  $('judge-discovery-list').appendChild(div);
+}
+
+function updateJudgeDiscovery(name, status, extra='') {
+  const safeId = name.replace(/\s+/g, '-').toLowerCase();
+  const statusEl = document.getElementById(`jd-${safeId}-status`);
+  const cardEl = document.getElementById(`jd-${safeId}`);
+  if (!statusEl || !cardEl) return;
+
+  // Remove old status classes
+  cardEl.classList.remove('status-researching', 'status-complete', 'status-error');
+  cardEl.classList.add(`status-${status}`);
+
+  const map = {
+    researching: `<span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-[#f0b429] pulse inline-block"></span><span class="text-[#f0b429]">crawling</span></span>`,
+    analyzed: `<span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-[#4da6ff] inline-block"></span><span class="text-[#4da6ff]">${esc(extra)}</span></span>`,
+    complete: `<span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-[#00c8a0] inline-block"></span><span class="text-[#00c8a0]">done</span></span>`,
+    error: `<span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-[#f56565] inline-block"></span><span class="text-[#f56565]">failed</span></span>`,
+  };
+  statusEl.innerHTML = map[status] || esc(status);
+}
+
+// ── Transition to results ────────────────────────────────────────────────
+function transitionToResults(data) {
+  $('progress-section').classList.add('fade-out');
+  setTimeout(() => {
+    $('progress-section').classList.add('hidden');
+    $('results-section').classList.remove('hidden');
+    $('results-section').classList.add('fade-in');
+    showResults(data);
+  }, 400);
+}
+
+// ── Results rendering ────────────────────────────────────────────────────
+function showResults(data) {
+  const h = data.hackathon || {};
+  const stats = data.aggregate_stats || {};
+  const judges = data.judges || [];
+  const ideas = data.project_ideas || [];
+
+  document.title = `${h.name || 'Analysis'} — JudgeIntel`;
+
+  renderHeader(h, judges, ideas, stats);
+  renderCards(stats);
+  renderJudges(judges);
+  renderIdeas(ideas);
+}
+
+function renderHeader(h, judges, ideas, stats) {
+  $('results-hack-name').textContent = h.name || 'Hackathon';
+  $('results-hack-desc').textContent = h.description || '';
+
+  // Meta chips
+  const meta = [];
+  if (h.organizer) meta.push(`<span class="chip chip-gray flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>${esc(h.organizer)}</span>`);
+  if (h.location) meta.push(`<span class="chip chip-gray flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${esc(h.location)}</span>`);
+  if (h.dates?.submission_deadline) meta.push(`<span class="chip chip-amber flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Due: ${esc(h.dates.submission_deadline)}</span>`);
+  if (h.tracks?.length) h.tracks.forEach(t => meta.push(`<span class="chip chip-blue">${esc(t)}</span>`));
+  if (h.prizes?.length) meta.push(`<span class="chip chip-amber">${esc(h.prizes[0])}</span>`);
+  $('results-hack-meta').innerHTML = meta.join('');
+
+  // Quick stats
+  const linkedInCount = judges.filter(j => validLinkedinProfile(j.linkedin_url)).length;
+  $('quick-stats').innerHTML = `
+    <div class="card rounded-xl px-5 py-4">
+      <div class="flex items-center gap-3">
+        <div class="stat-num">${judges.length}</div>
+        <div>
+          <p class="text-xs text-white font-semibold">Judges Profiled</p>
+          <p class="text-[10px] text-[#3d5470]">${linkedInCount} with LinkedIn</p>
+        </div>
+      </div>
+    </div>
+    <div class="card rounded-xl px-5 py-4">
+      <div class="flex items-center gap-3">
+        <div class="stat-num">${ideas.length}</div>
+        <div>
+          <p class="text-xs text-white font-semibold">Project Ideas</p>
+          <p class="text-[10px] text-[#3d5470]">Tailored to panel</p>
+        </div>
+      </div>
+    </div>
+    <div class="card rounded-xl px-5 py-4">
+      <div class="flex items-center gap-3">
+        <div class="stat-num">${(stats.top_industries || []).length}</div>
+        <div>
+          <p class="text-xs text-white font-semibold">Industries Covered</p>
+          <p class="text-[10px] text-[#3d5470]">${esc((stats.top_industries || []).slice(0,2).map(i => i.name).join(', ') || 'N/A')}</p>
+        </div>
+      </div>
+    </div>
+    <div class="card rounded-xl px-5 py-4">
+      <div class="flex items-center gap-3">
+        <div class="stat-num">${(stats.top_technologies || []).length}</div>
+        <div>
+          <p class="text-xs text-white font-semibold">Key Technologies</p>
+          <p class="text-[10px] text-[#3d5470]">${esc(stats.judging_style || stats.dominant_archetype || 'Varied')}</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $('judge-total-badge').textContent = judges.length;
+}
+
+function renderCards(stats) {
+  // Panel summary
+  $('panel-summary-card').innerHTML = `
+    <p class="text-xs text-[#7a92b0] leading-relaxed mb-4">${esc(stats.panel_summary || 'No panel summary available.')}</p>
+    ${stats.dominant_archetype ? `<div class="p-3 rounded-lg mb-3" style="background: rgba(155,127,232,0.05); border: 1px solid rgba(155,127,232,0.15)">
+      <p class="text-[10px] text-[#3d5470] mb-1">Dominant Archetype</p>
+      <p class="text-xs text-white font-semibold">${esc(stats.dominant_archetype)}</p>
+    </div>` : ''}
+    ${stats.judging_style ? `<div class="p-3 rounded-lg" style="background: rgba(77,166,255,0.05); border: 1px solid rgba(77,166,255,0.15)">
+      <p class="text-[10px] text-[#3d5470] mb-1">Judging Style</p>
+      <p class="text-xs text-white font-semibold">${esc(stats.judging_style)}</p>
+    </div>` : ''}
+  `;
+
+  // Biggest opportunity
+  $('opportunity-card').innerHTML = stats.biggest_opportunity
+    ? `<p class="text-[15px] text-white leading-relaxed font-syne">${esc(stats.biggest_opportunity)}</p>`
+    : '<p class="text-xs text-[#3d5470]">No opportunity data.</p>';
+
+  // Industries chart
+  const industries = stats.top_industries || [];
+  $('industries-chart').innerHTML = industries.slice(0,7).map(ind => `
+    <div>
+      <div class="flex items-center justify-between mb-1.5">
+        <span class="text-xs text-[#dce8f5] font-semibold">${esc(ind.name)}</span>
+        <span class="text-[11px] text-[#7a92b0]">${ind.percentage || ind.count || 0}%</span>
+      </div>
+      <div class="prog-bar" style="height:6px; border-radius:3px">
+        <div class="stat-bar-fill" style="width: ${Math.min(ind.percentage || ((ind.count||1)*20), 100)}%"></div>
+      </div>
+      ${ind.judges?.length ? `<p class="text-[10px] text-[#3d5470] mt-1">${ind.judges.slice(0,3).join(', ')}</p>` : ''}
+    </div>
+  `).join('') || '<p class="text-xs text-[#3d5470]">No industry data.</p>';
+
+  // Consensus
+  const liked = stats.consensus_liked || [];
+  $('consensus-liked').innerHTML = liked.slice(0,8).map(x =>
+    `<div class="flex gap-3 text-xs items-start p-2.5 rounded-lg" style="background: rgba(0,200,160,0.03); border: 1px solid rgba(0,200,160,0.08)">
+      <span style="color:var(--accent)" class="shrink-0 mt-0.5">&#10003;</span>
+      <span class="text-[#dce8f5] leading-relaxed">${esc(x)}</span>
+    </div>`
+  ).join('') || '<p class="text-xs text-[#3d5470]">No data.</p>';
+
+  const disliked = stats.consensus_disliked || [];
+  $('consensus-disliked').innerHTML = disliked.slice(0,8).map(x =>
+    `<div class="flex gap-3 text-xs items-start p-2.5 rounded-lg" style="background: rgba(245,101,101,0.03); border: 1px solid rgba(245,101,101,0.08)">
+      <span style="color:var(--red)" class="shrink-0 mt-0.5">&#10007;</span>
+      <span class="text-[#dce8f5] leading-relaxed">${esc(x)}</span>
+    </div>`
+  ).join('') || '<p class="text-xs text-[#3d5470]">No data.</p>';
+
+  // Tech chips
+  const techs = stats.top_technologies || [];
+  $('tech-chips').innerHTML = techs.map(t => {
+    const cls = t.interest_level === 'high' ? '' : 'chip-gray';
+    return `<span class="chip ${cls} tooltip">${esc(t.name)}<span class="tt">${esc(t.judges?.join(', ') || 'Multiple judges')}</span></span>`;
+  }).join('') || '<p class="text-xs text-[#3d5470]">No data.</p>';
+}
+
+function renderJudges(judges) {
+  $('judges-grid').innerHTML = judges.map((j, i) => {
+    const conf = j.research_confidence || 'medium';
+    const confClass = conf === 'high' ? 'confid-high' : conf === 'low' ? 'confid-low' : 'confid-medium';
+    const confLabel = conf === 'high' ? 'High confidence' : conf === 'low' ? 'Low confidence' : 'Medium confidence';
+
+    const links = [];
+    const linkedin = validLinkedinProfile(j.linkedin_url);
+    const github = normalizeUrl(j.github_url);
+    const website = normalizeUrl(j.website_url);
+    if (linkedin) links.push(`<a href="${esc(linkedin)}" target="_blank" class="chip chip-blue text-[10px] hover:opacity-80 transition-opacity">LinkedIn &#8599;</a>`);
+    if (github) links.push(`<a href="${esc(github)}" target="_blank" class="chip chip-gray text-[10px] hover:opacity-80 transition-opacity">GitHub &#8599;</a>`);
+    if (website) links.push(`<a href="${esc(website)}" target="_blank" class="chip chip-gray text-[10px] hover:opacity-80 transition-opacity">Website &#8599;</a>`);
+
+    return `
+    <div class="card card-glow rounded-2xl overflow-hidden judge-card section-reveal" style="animation-delay:${i*0.06}s">
+      <div class="p-5 cursor-pointer" onclick="toggleJudge(this.closest('.judge-card'))">
+        <div class="flex items-start gap-4">
+          ${j.photo_url ? `<img src="${esc(j.photo_url)}" class="w-14 h-14 rounded-xl object-cover shrink-0 border border-[#1a2740]" onerror="this.style.display='none'" />` : `
+          <div class="w-14 h-14 rounded-xl shrink-0 flex items-center justify-center font-syne font-extrabold text-xl"
+               style="background: rgba(0,200,160,0.08); color: var(--accent); border: 1px solid rgba(0,200,160,0.15)">
+            ${esc((j.name||'?').charAt(0))}
+          </div>`}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <h3 class="font-syne font-bold text-sm text-white">${esc(j.name)}</h3>
+              <span class="${confClass} text-[10px] flex items-center gap-1 tooltip">
+                <span class="w-1.5 h-1.5 rounded-full inline-block" style="background: currentColor"></span>
+                ${esc(conf)}
+                <span class="tt">${confLabel} - based on sources found</span>
+              </span>
+            </div>
+            <p class="text-[11px] text-[#7a92b0]">${esc(j.title || '')}${j.company ? ' &middot; <span class="text-[#4da6ff]">' + esc(j.company) + '</span>' : ''}</p>
+            ${j.expertise?.length ? `<div class="flex flex-wrap gap-1 mt-2">${j.expertise.slice(0,4).map(x => `<span class="chip text-[10px]">${esc(x)}</span>`).join('')}</div>` : ''}
+          </div>
+          <svg class="judge-chevron shrink-0 text-[#3d5470] mt-1" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </div>
+
+      <div class="judge-detail border-t border-[#1a2740] px-5 pb-6 pt-5 space-y-5">
+        ${j.bio ? `<p class="text-xs text-[#7a92b0] leading-relaxed">${esc(j.bio)}</p>` : ''}
+
+        <div class="grid grid-cols-2 gap-5">
+          <div>
+            <p class="text-[10px] uppercase tracking-widest mb-2.5 font-bold" style="color:var(--accent)">What They Like</p>
+            ${fmtList(j.likes, 'text-[#00c8a0]')}
+          </div>
+          <div>
+            <p class="text-[10px] uppercase tracking-widest mb-2.5 font-bold" style="color:var(--red)">What They Dislike</p>
+            ${fmtList(j.dislikes, 'text-[#f56565]')}
+          </div>
+        </div>
+
+        ${j.key_insights?.length ? `
+        <div>
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2.5 font-bold">Key Insights</p>
+          <div class="space-y-2">
+            ${j.key_insights.map(x => `
+              <div class="flex gap-2.5 text-xs items-start p-3 rounded-lg" style="background:rgba(0,200,160,0.04); border:1px solid rgba(0,200,160,0.1)">
+                <span style="color:var(--accent)" class="shrink-0">&rarr;</span>
+                <span class="text-[#dce8f5] leading-relaxed">${esc(x)}</span>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+
+        ${j.best_pitch_approach ? `
+        <div class="p-4 rounded-xl" style="background:rgba(155,127,232,0.06); border:1px solid rgba(155,127,232,0.15)">
+          <p class="text-[10px] uppercase tracking-widest text-[#9b7fe8] mb-1.5 font-bold">Best Pitch Approach</p>
+          <p class="text-xs text-[#dce8f5] leading-relaxed">${esc(j.best_pitch_approach)}</p>
+        </div>` : ''}
+
+        ${j.notable_work?.length ? `
+        <div>
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2.5 font-bold">Notable Work</p>
+          <div class="flex flex-wrap gap-1.5">${j.notable_work.map(x => `<span class="chip chip-amber">${esc(x)}</span>`).join('')}</div>
+        </div>` : ''}
+
+        ${j.industries?.length ? `
+        <div>
+          <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2.5 font-bold">Industries</p>
+          <div class="flex flex-wrap gap-1.5">${j.industries.map(x => `<span class="chip chip-purple">${esc(x)}</span>`).join('')}</div>
+        </div>` : ''}
+
+        ${links.length ? `<div class="flex gap-2 pt-2">${links.join('')}</div>` : ''}
+
+        ${j.research_sources?.length ? `
+        <p class="text-[10px] text-[#3d5470] pt-1">${j.research_sources.length} source${j.research_sources.length !== 1 ? 's' : ''} crawled</p>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleJudge(card) { card.classList.toggle('open'); }
+
+function renderIdeas(ideas) {
+  $('ideas-list').innerHTML = ideas.map((idea, i) => {
+    const rank = idea.rank || (i + 1);
+    const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : 'rank-n';
+    const diffColor = idea.difficulty === 'Easy' ? '' : idea.difficulty === 'Hard' ? 'chip-red' : 'chip-amber';
+    const diffIcon = idea.difficulty === 'Easy' ? '&#9650;' : idea.difficulty === 'Hard' ? '&#9660;' : '&#9644;';
+
+    return `
+    <div class="card card-glow rounded-2xl overflow-hidden section-reveal" style="animation-delay:${i*0.07}s">
+      <div class="p-6">
+        <div class="flex items-start gap-4">
+          <div class="rank-badge ${rankClass} shrink-0 mt-0.5">${rank}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <h3 class="font-syne font-extrabold text-base text-white">${esc(idea.title)}</h3>
+              <span class="chip ${diffColor} text-[10px]">${diffIcon} ${esc(idea.difficulty || 'Medium')}</span>
+              ${idea.track ? `<span class="chip chip-blue text-[10px]">${esc(idea.track)}</span>` : ''}
+            </div>
+            ${idea.tagline ? `<p class="text-xs text-[#00c8a0] mb-3 italic font-serif text-sm">${esc(idea.tagline)}</p>` : ''}
+            <p class="text-xs text-[#7a92b0] leading-relaxed mb-5">${esc(idea.description || '')}</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div class="p-4 rounded-xl" style="background: rgba(0,200,160,0.03); border: 1px solid rgba(0,200,160,0.1)">
+                <p class="text-[10px] uppercase tracking-widest text-[#00c8a0] mb-2 font-bold">Why This Wins</p>
+                <p class="text-xs text-[#dce8f5] leading-relaxed">${esc(idea.why_this_wins || '')}</p>
+              </div>
+              <div>
+                <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2 font-bold">Tech Stack</p>
+                <div class="flex flex-wrap gap-1.5 mb-3">
+                  ${(idea.tech_stack || []).map(t => `<span class="chip chip-blue text-[10px]">${esc(t)}</span>`).join('')}
+                </div>
+                ${idea.industries?.length ? `
+                <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2 mt-3 font-bold">Industries</p>
+                <div class="flex flex-wrap gap-1.5">
+                  ${idea.industries.map(x => `<span class="chip chip-purple text-[10px]">${esc(x)}</span>`).join('')}
+                </div>` : ''}
+              </div>
+            </div>
+
+            ${idea.judge_appeal ? `
+            <div class="grid grid-cols-2 gap-4 mt-5">
+              ${idea.judge_appeal.strong?.length ? `
+              <div class="p-3 rounded-xl" style="background:rgba(0,200,160,0.04);border:1px solid rgba(0,200,160,0.1)">
+                <p class="text-[10px] text-[#00c8a0] uppercase tracking-widest mb-1.5 font-bold">Strong Appeal</p>
+                <p class="text-[11px] text-[#dce8f5] leading-relaxed">${idea.judge_appeal.strong.join(', ')}</p>
+              </div>` : ''}
+              ${idea.judge_appeal.weak?.length ? `
+              <div class="p-3 rounded-xl" style="background:rgba(245,101,101,0.04);border:1px solid rgba(245,101,101,0.1)">
+                <p class="text-[10px] text-[#f56565] uppercase tracking-widest mb-1.5 font-bold">Weaker Appeal</p>
+                <p class="text-[11px] text-[#7a92b0] leading-relaxed">${Array.isArray(idea.judge_appeal.weak) ? idea.judge_appeal.weak.join(', ') : esc(String(idea.judge_appeal.weak))}</p>
+              </div>` : ''}
+            </div>` : ''}
+
+            ${idea.execution_tips?.length ? `
+            <div class="mt-5">
+              <p class="text-[10px] uppercase tracking-widest text-[#3d5470] mb-2.5 font-bold">Execution Tips</p>
+              <div class="space-y-1.5">
+                ${idea.execution_tips.map(t => `
+                  <div class="flex gap-2.5 text-xs"><span class="text-[#f0b429] shrink-0">&rarr;</span><span class="text-[#dce8f5] leading-relaxed">${esc(t)}</span></div>
+                `).join('')}
+              </div>
+            </div>` : ''}
+
+            ${idea.demo_strategy ? `
+            <div class="mt-5 p-4 rounded-xl" style="background:rgba(240,180,41,0.04);border:1px solid rgba(240,180,41,0.12)">
+              <p class="text-[10px] text-[#f0b429] uppercase tracking-widest mb-1.5 font-bold">Demo Strategy</p>
+              <p class="text-xs text-[#dce8f5] leading-relaxed">${esc(idea.demo_strategy)}</p>
+            </div>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Error ────────────────────────────────────────────────────────────────
+function showError(msg) {
+  $('progress-section').classList.add('fade-out');
+  setTimeout(() => {
+    $('progress-section').classList.add('hidden');
+    $('results-section').classList.add('hidden');
+    $('error-section').classList.remove('hidden');
+    $('error-msg').textContent = msg;
+  }, 400);
+}
+
+// ── Start ────────────────────────────────────────────────────────────────
+listenSSE();
+</script>
+</body>
+</html>

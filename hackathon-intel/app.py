@@ -1,4 +1,5 @@
 import json
+import logging
 import queue
 import threading
 import uuid
@@ -7,6 +8,9 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 
 from database import Database
 from pipeline import run_analysis_pipeline
+
+# Enable logging so Gemini errors and crawler issues are visible
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 
 app = Flask(__name__)
 db = Database()
@@ -18,6 +22,11 @@ _job_queues: dict[str, queue.Queue] = {}
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/analysis/<job_id>")
+def analysis(job_id: str):
+    return render_template("analysis.html", job_id=job_id)
 
 
 @app.route("/analyze", methods=["POST"])
