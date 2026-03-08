@@ -238,7 +238,7 @@ async def _research_single_judge(judge: dict, crawler, analyzer, q: queue_module
 
     # ── All 10 workers in parallel (including general search) ──────────────
     worker_results = await asyncio.gather(
-        crawler.worker_linkedin(name, company, title),
+        crawler.worker_linkedin(name, company, title, analyzer=analyzer),
         crawler.worker_github_personal(name, company),
         crawler.worker_news_interviews(name, company),
         crawler.worker_social_media(name, company),

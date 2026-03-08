@@ -93,6 +93,16 @@ JUDGE_PROFILE_SCHEMA = {
     "required": ["name", "bio", "expertise", "likes", "key_insights", "research_confidence"],
 }
 
+LINKEDIN_VERIFICATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "is_match": {"type": "boolean"},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "reasoning": {"type": "string"},
+    },
+    "required": ["is_match", "confidence"],
+}
+
 FINAL_ANALYSIS_SCHEMA = {
     "type": "object",
     "properties": {
@@ -341,3 +351,88 @@ Generate 7-9 project ideas ranked by total likelihood to win given THIS specific
         logger.info(f"[final_analysis] Got {len(result.get('project_ideas', []))} project ideas, "
                      f"agg keys: {list(result.get('aggregate_stats', {}).keys())}")
         return result
+
+    async def verify_linkedin_match(self, name: str, company: str, title: str, linkedin_content: str) -> dict:
+        """Verify if a LinkedIn profile matches the judge we're looking for.
+        
+        CRITICAL: Must be strict to avoid false positives when multiple people have similar names.
+        Only confirm match if the profile clearly belongs to the exact person we're looking for.
+        """
+        # Extract first and last name for verification
+        name_parts = name.lower().split()
+        first_name = name_parts[0] if name_parts else ""
+        last_name = name_parts[-1] if len(name_parts) > 1 else ""
+        
+        prompt = f"""You are verifying if a LinkedIn profile belongs to a SPECIFIC person. Be STRICT - only confirm if this is definitely the right person.
+
+PERSON WE'RE LOOKING FOR:
+- Full Name: {name}
+- First Name: {first_name}
+- Last Name: {last_name}
+- Company: {company or "Unknown"}
+- Title/Role: {title or "Unknown"}
+
+LINKEDIN PROFILE CONTENT:
+{linkedin_content[:10000]}
+
+CRITICAL VERIFICATION STEPS:
+
+1. EXTRACT THE PROFILE OWNER'S NAME:
+   - Look for the main name displayed at the top of the profile
+   - Look for name in the URL or page title
+   - Check the "About" section for self-references
+
+2. COMPARE NAMES (MOST IMPORTANT):
+   - Does the profile show "{first_name}" AND "{last_name}" together?
+   - If profile shows DIFFERENT first name → REJECT (wrong person)
+   - If profile shows DIFFERENT last name → REJECT (wrong person)
+   - Example: Looking for "Sumeet Jeswani", profile shows "Sumeet Kaur" → REJECT
+   - Example: Looking for "Lilly Jones", profile shows "Lilly Smith" → REJECT
+
+3. CHECK COMPANY/TITLE CONTEXT:
+   - If "{company}" provided: Is it mentioned as current or past employer?
+   - If "{title}" provided: Does experience section show this or similar role?
+   - Strong match: Name matches AND (company matches OR title matches)
+
+4. REJECTION CRITERIA (Return is_match=false if ANY apply):
+   - Profile shows a different person's name (even similar)
+   - Name appears only in "People also viewed" or connections
+   - Profile is mostly empty with no clear identifying information
+   - Location/industry completely mismatches with no explanation
+
+ACCEPTANCE CRITERIA (Return is_match=true if ALL apply):
+   - Profile clearly shows "{first_name}" and "{last_name}"
+   - No contradictory name information
+   - At least some professional context that could match
+
+DECISION:
+- HIGH confidence: Exact name match + supporting context (company/title/location)
+- MEDIUM confidence: Exact name match + limited but consistent context
+- LOW confidence: Name appears but unclear if it's the profile owner
+- REJECT: Any doubt about name match or clear mismatch"""
+
+        result = await self._generate(prompt, schema=LINKEDIN_VERIFICATION_SCHEMA)
+        if not isinstance(result, dict):
+            return {"is_match": False, "confidence": "low", "reasoning": "Invalid response"}
+        
+        is_match = result.get("is_match", False)
+        confidence = result.get("confidence", "low")
+        reasoning = result.get("reasoning", "")
+        
+        # Post-processing: Double-check name match in content
+        if is_match:
+            content_lower = linkedin_content.lower()
+            has_first = first_name in content_lower
+            has_last = last_name in content_lower
+            
+            if not (has_first and has_last):
+                # Gemini said match but names not found - likely error
+                is_match = False
+                confidence = "low"
+                reasoning = f"Post-processing rejection: Names ({first_name}, {last_name}) not found in content"
+        
+        return {
+            "is_match": is_match,
+            "confidence": confidence,
+            "reasoning": reasoning
+        }

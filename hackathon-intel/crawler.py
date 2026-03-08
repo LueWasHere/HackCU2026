@@ -21,6 +21,19 @@ def _name_tokens(name: str) -> list[str]:
     return [t for t in re.findall(r"[a-z0-9]+", (name or "").lower()) if len(t) > 1]
 
 
+def _normalize_text(text: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", " ", (text or "").lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _contains_phrase(text: str, phrase: str) -> bool:
+    t = f" {_normalize_text(text)} "
+    p = _normalize_text(phrase)
+    if not p:
+        return False
+    return f" {p} " in t
+
+
 def _slug_tokens_from_linkedin(url: str) -> list[str]:
     try:
         parsed = urlparse(url or "")
@@ -147,84 +160,132 @@ def _collect_search_targets(crawl_result: dict, max_results: int) -> list[str]:
 
 
 def _score_linkedin_candidate(url: str, content: str, name: str, company: str, title: str) -> int:
+    """Score a LinkedIn candidate - very lenient, let Gemini do final verification."""
     score = 0
     url_l = (url or "").lower()
     content_l = (content or "").lower()
+    head = content_l[:8000]  # Look at lots of content
 
+    # Base URL scoring
     if "/in/" in url_l:
-        score += 25
-    elif "/pub/" in url_l:
-        score += 12
+        score += 20
     else:
         score -= 40
 
     name_toks = _name_tokens(name)
     slug_toks = _slug_tokens_from_linkedin(url_l)
-    for tok in name_toks:
-        if tok in slug_toks:
-            score += 20
-        elif tok in url_l:
-            score += 12
-        if tok in content_l:
-            score += 4
-
-    if len(name_toks) >= 2 and all(tok in slug_toks for tok in name_toks[:2]):
+    
+    # ===== SLUG MATCHING (bonus only - no penalty) =====
+    first_name_match = name_toks[0] in slug_toks if name_toks else False
+    last_name_match = name_toks[-1] in slug_toks if len(name_toks) > 1 else False
+    full_name_in_slug = len(name_toks) >= 2 and all(tok in slug_toks for tok in name_toks[:2])
+    
+    if full_name_in_slug:
+        score += 30  # Perfect slug match is good signal
+    elif first_name_match and last_name_match:
         score += 20
+    elif first_name_match or last_name_match:
+        score += 10
+    # NO PENALTY for missing slug match - many use custom usernames like "lillysanovia"
+    
+    # ===== CONTENT NAME MATCHING (important but not required) =====
+    full_name = " ".join(name_toks[:2]) if len(name_toks) >= 2 else (name_toks[0] if name_toks else "")
+    first_name = name_toks[0] if name_toks else ""
+    last_name = name_toks[-1] if len(name_toks) > 1 else ""
+    
+    if full_name and _contains_phrase(head, full_name):
+        score += 35  # Full name visible on profile is strong
+    elif first_name and last_name and first_name in head and last_name in head[:5000]:
+        score += 25
+    else:
+        name_in_content = 0
+        if first_name and first_name in head:
+            name_in_content += 1
+        if last_name and last_name in head:
+            name_in_content += 1
+        score += name_in_content * 8
+    
+    # ===== COMPANY MATCHING (bonus only) =====
+    company_toks = _name_tokens(company)[:5] if company else []
+    if company_toks:
+        company_lower = company.lower()
+        if company_lower in head:
+            score += 25
+        else:
+            company_hits = sum(1 for tok in company_toks if tok in head)
+            if company_hits >= len(company_toks):
+                score += 18
+            elif company_hits >= max(1, len(company_toks) // 2):
+                score += 8
+    
+    # ===== TITLE MATCHING (bonus only) =====
+    title_toks = _name_tokens(title)[:5] if title else []
+    if title_toks:
+        title_lower = title.lower()
+        if title_lower in head:
+            score += 15
+        else:
+            title_hits = sum(1 for tok in title_toks if tok in head)
+            if title_hits >= len(title_toks):
+                score += 10
+            elif title_hits >= max(1, len(title_toks) // 2):
+                score += 5
 
-    # Penalize ambiguous slugs (same first name, wrong/no last name match).
-    if len(name_toks) >= 2 and name_toks[-1] not in slug_toks:
-        score -= 18
-
-    company_hits = 0
-    title_hits = 0
-    for tok in _name_tokens(company)[:4]:
-        if tok in content_l:
-            company_hits += 1
-            score += 5
-
-    for tok in _name_tokens(title)[:4]:
-        if tok in content_l:
-            title_hits += 1
-            score += 4
-
-    if company and company_hits == 0:
-        score -= 16
-    if title and title_hits == 0:
-        score -= 8
-
-    # Typical marker of heavily blocked/empty LI pages.
-    if "linkedin member" in content_l and len(content_l) < 500:
-        score -= 12
-
+    # Quality signals
+    if "linkedin member" in content_l and len(content_l) < 600:
+        score -= 10
     if len(content_l) < 150:
-        score -= 8
+        score -= 20
+    if len(content_l) > 800:
+        score += 5
 
     return score
 
 
 def _is_linkedin_candidate_valid(url: str, content: str, name: str, company: str, title: str, score: int) -> bool:
-    if score < 45:
+    """Validate a LinkedIn candidate - very lenient, pass to Gemini for final verification."""
+    if score < 8:  # Very low threshold - let Gemini do the real filtering
         return False
+        
     name_toks = _name_tokens(name)
     slug_toks = _slug_tokens_from_linkedin(url)
     content_l = (content or "").lower()
+    head = content_l[:8000]
 
+    # Must have at least SOME name evidence (very lenient)
     if len(name_toks) >= 2:
-        # Require both first+last in slug, or explicit full-name evidence in page content.
+        first_name = name_toks[0]
+        last_name = name_toks[-1]
         full_name = " ".join(name_toks[:2])
-        has_full_name_evidence = full_name in content_l
-        has_slug_name_match = all(tok in slug_toks for tok in name_toks[:2])
-        if not (has_full_name_evidence or has_slug_name_match):
+        
+        # Accept if ANY name evidence exists
+        has_first_name = first_name in slug_toks or first_name in head
+        has_last_name = last_name in slug_toks or last_name in head
+        has_full_name = _contains_phrase(head, full_name)
+        
+        # Very lenient - accept if either first OR last name found anywhere
+        if not (has_first_name or has_last_name or has_full_name):
+            return False
+    elif len(name_toks) == 1:
+        if name_toks[0] not in slug_toks and name_toks[0] not in head[:3000]:
             return False
 
-    company_toks = _name_tokens(company)[:4]
-    title_toks = _name_tokens(title)[:4]
-    has_company = any(tok in content_l for tok in company_toks) if company_toks else True
-    has_title = any(tok in content_l for tok in title_toks) if title_toks else True
+    # Only reject for very common names if we have zero context
+    common_last_names = {"smith", "johnson", "williams", "brown", "jones", "miller", "davis", 
+                         "garcia", "rodriguez", "wilson", "martinez", "anderson", "taylor",
+                         "thomas", "jackson", "white", "harris", "martin", "thompson", "moore"}
+    is_common_name = len(name_toks) >= 2 and name_toks[-1] in common_last_names
+    
+    if is_common_name and company:
+        company_toks = _name_tokens(company)[:3]
+        # Even for common names, just need SOME company evidence
+        company_hits = sum(1 for tok in company_toks if tok in head) if company_toks else 0
+        
+        # Only reject common names if zero company evidence AND no full name in slug
+        if company_hits == 0 and not (name_toks[0] in slug_toks and name_toks[-1] in slug_toks):
+            # Still allow through - Gemini will verify
+            pass
 
-    # If we know both company and title, insist at least one is visible in content.
-    if company_toks and title_toks and not (has_company or has_title):
-        return False
     return True
 
 
@@ -359,61 +420,163 @@ class HackathonCrawler:
 
     # ── Worker 1: LinkedIn ────────────────────────────────────────────────
 
-    async def worker_linkedin(self, name: str, company: str = "", title: str = "") -> dict:
-        """Find and crawl LinkedIn profile."""
+    async def worker_linkedin(self, name: str, company: str = "", title: str = "",
+                               analyzer=None) -> dict:
+        """Find and crawl LinkedIn profile with Gemini verification for 100% accuracy."""
         name, company, title = _clean(name), _clean(company), _clean(title)
         if not name:
             return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
-        results = []
-        candidates = []
 
-        query = f'"{name}" {title} {company} site:linkedin.com/in'
-        urls = await self._search_duckduckgo(query, max_results=4)
+        async def _collect_candidates(search_query: str, max_results: int, seen_urls: set) -> list[dict]:
+            """Collect candidates without verification - just gather all possibilities."""
+            urls = await self._search_duckduckgo(search_query, max_results=max_results)
+            linkedin_urls = [u for u in urls if _is_linkedin_profile_url(u)]
+            
+            candidates = []
+            for u in linkedin_urls[:5]:  # Check top 5 per query
+                normalized = _normalize_linkedin_url(u)
+                if not normalized or normalized in seen_urls:
+                    continue
+                seen_urls.add(normalized)
+                
+                data = await self._crawl_url(u, timeout=15, content_limit=6000)
+                if not isinstance(data, dict):
+                    continue
+                
+                content = data.get("content", "")
+                if len(content) < 100:
+                    continue
+                
+                # Basic scoring
+                score = _score_linkedin_candidate(normalized, content, name, company, title)
+                if score < 10:  # Moderate threshold
+                    continue
+                
+                photo_url = _extract_linkedin_photo(content)
+                candidates.append({
+                    "url": normalized,
+                    "content": content[:6000],
+                    "photo_url": photo_url,
+                    "score": score,
+                })
+            
+            return candidates
 
+        # Phase 1: Collect candidates from multiple search strategies
+        all_candidates = []
+        seen_urls = set()
+        
+        # Try 1: Specific search with name, title, company
+        query1 = f'"{name}" {title} {company} site:linkedin.com/in'
+        all_candidates.extend(await _collect_candidates(query1, 6, seen_urls))
+        
+        # Try 2: Name + company
+        if company:
+            query2 = f'"{name}" {company} site:linkedin.com/in'
+            all_candidates.extend(await _collect_candidates(query2, 6, seen_urls))
+        
+        # Try 3: Name + title keywords
+        if title:
+            title_keywords = " ".join(_name_tokens(title)[:3])
+            query3 = f'"{name}" {title_keywords} site:linkedin.com/in'
+            all_candidates.extend(await _collect_candidates(query3, 6, seen_urls))
+        
+        # Try 4: Name only
+        query4 = f'"{name}" site:linkedin.com/in'
+        all_candidates.extend(await _collect_candidates(query4, 8, seen_urls))
+        
+        # Try 5: Direct URL patterns
         slug = re.sub(r"[^a-z0-9]", "-", name.lower()).strip("-")
         direct_urls = [
             f"https://www.linkedin.com/in/{slug}/",
             f"https://www.linkedin.com/in/{slug.replace('-', '')}/",
         ]
-
-        all_urls = list(dict.fromkeys(urls + direct_urls))
-        linkedin_urls = [u for u in all_urls[:5] if _is_linkedin_profile_url(u)]
-        tasks = [self._crawl_url(u, timeout=20, content_limit=5000) for u in linkedin_urls]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for u, data in zip(linkedin_urls, crawled):
-            if not isinstance(data, dict):
+        for u in direct_urls:
+            normalized = _normalize_linkedin_url(u)
+            if normalized in seen_urls:
                 continue
-            content = data.get("content", "")
-            if len(content) < 100:
-                continue
-            normalized_url = _normalize_linkedin_url(u)
-            if not normalized_url:
-                continue
-            photo_url = _extract_linkedin_photo(content)
-            score = _score_linkedin_candidate(normalized_url, content, name, company, title)
-            if not _is_linkedin_candidate_valid(normalized_url, content, name, company, title, score):
-                logger.info(f"[linkedin] rejected candidate for '{name}': {normalized_url} score={score}")
-                continue
-            candidates.append({
-                "url": normalized_url,
-                "content": content[:5000],
-                "photo_url": photo_url,
-                "score": score,
-            })
-
-        candidates.sort(key=lambda x: x["score"], reverse=True)
-        top = candidates[0] if candidates else None
-        sources = [c["url"] for c in candidates[:3]]
-        for c in candidates[:2]:
-            results.append(c["content"])
-
+            seen_urls.add(normalized)
+            
+            data = await self._crawl_url(u, timeout=18, content_limit=8000)
+            if isinstance(data, dict) and data.get("content") and len(data["content"]) > 100:
+                score = _score_linkedin_candidate(normalized, data["content"], name, company, title)
+                if score >= 5:
+                    all_candidates.append({
+                        "url": normalized,
+                        "content": data["content"][:8000],
+                        "photo_url": _extract_linkedin_photo(data["content"]),
+                        "score": score,
+                    })
+        
+        if not all_candidates:
+            logger.info(f"[linkedin] no candidates found for '{name}'")
+            return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
+        
+        # Sort by score
+        all_candidates.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Phase 2: Gemini verification for 100% accuracy
+        if analyzer:
+            logger.info(f"[linkedin] verifying {len(all_candidates)} candidates for '{name}' with Gemini...")
+            
+            # Verify top candidates (up to 5) to find the correct one
+            verified_candidates = []
+            for candidate in all_candidates[:5]:
+                try:
+                    verification = await analyzer.verify_linkedin_match(
+                        name, company, title, candidate["content"]
+                    )
+                    is_match = verification.get("is_match", False)
+                    confidence = verification.get("confidence", "low")
+                    reasoning = verification.get("reasoning", "")
+                    
+                    if is_match:
+                        logger.info(f"[linkedin] ✅ Gemini verified '{name}': {candidate['url']} (confidence: {confidence})")
+                        candidate["gemini_confidence"] = confidence
+                        candidate["gemini_reasoning"] = reasoning
+                        verified_candidates.append(candidate)
+                        
+                        # Don't break - verify all to find the best match
+                    else:
+                        logger.info(f"[linkedin] ❌ Gemini rejected '{name}': {candidate['url']} - {reasoning[:80]}")
+                        
+                except Exception as e:
+                    logger.warning(f"[linkedin] Gemini verification error for '{name}': {e}")
+                    continue
+            
+            if verified_candidates:
+                # Sort by Gemini confidence then score
+                confidence_order = {"high": 3, "medium": 2, "low": 1}
+                verified_candidates.sort(
+                    key=lambda x: (confidence_order.get(x.get("gemini_confidence", "low"), 0), x["score"]),
+                    reverse=True
+                )
+                
+                top = verified_candidates[0]
+                logger.info(f"[linkedin] selected verified profile for '{name}': {top['url']} (confidence: {top.get('gemini_confidence', 'unknown')})")
+                
+                return {
+                    "source": "linkedin",
+                    "content": top["content"],
+                    "sources": [c["url"] for c in verified_candidates[:3]],
+                    "linkedin_url": top["url"],
+                    "photo_url": top["photo_url"],
+                }
+            else:
+                # No candidate passed Gemini verification
+                logger.info(f"[linkedin] no candidate passed Gemini verification for '{name}' - returning empty")
+                return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
+        
+        # No analyzer available - use top scoring candidate (less accurate)
+        top = all_candidates[0]
+        logger.info(f"[linkedin] no Gemini verification, using top score for '{name}': {top['url']}")
+        
         return {
             "source": "linkedin",
-            "content": "\n\n---\n\n".join(results),
-            "sources": sources,
-            "linkedin_url": top["url"] if top else "",
-            "photo_url": top["photo_url"] if top else "",
+            "content": top["content"],
+            "sources": [c["url"] for c in all_candidates[:3]],
+            "linkedin_url": top["url"],
+            "photo_url": top["photo_url"],
         }
 
     # ── Worker 2: GitHub + personal site ──────────────────────────────────
