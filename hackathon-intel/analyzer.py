@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Semaphore to avoid blasting Gemini API with too many concurrent requests
-_gemini_semaphore = asyncio.Semaphore(6)
+_gemini_semaphore = asyncio.Semaphore(12)
 
 # ── JSON Schemas ──────────────────────────────────────────────────────────────
 
@@ -218,11 +218,7 @@ class HackathonAnalyzer:
             return {}
 
     async def extract_hackathon_info(self, page_content: str, url: str) -> dict:
-        """Extract hackathon metadata and judge list from the crawled page.
-
-        Tries escalating content windows so judges buried deep in the page
-        are found, and token-limit errors are handled gracefully.
-        """
+        """Extract hackathon metadata and judge list from the crawled page."""
         content_limits = [8000, 20000, 40000, 70000, len(page_content)]
         seen = set()
         limits = []
@@ -292,12 +288,12 @@ TITLE: {title}
 COMPANY: {company}
 BIO FROM HACKATHON PAGE: {judge_basic.get('bio', 'N/A')}
 
-RESEARCH GATHERED FROM ACROSS THE WEB (10 sources: LinkedIn, GitHub, News, Social Media, Academic, Company, Talks, YouTube Transcripts, General Web, Podcasts/HN):
+RESEARCH GATHERED FROM ACROSS THE WEB:
 {combined_research[:32000]}
 
 Analyze ALL this data carefully — LinkedIn experience, GitHub repos, tweets, blog posts, papers, talks, company info.
 
-Be EXTREMELY SPECIFIC and ACTIONABLE. Reference actual evidence from the research data. Vague generalities are useless — "values innovation" is worthless, "pushed 3 Rust crates in the last month and tweeted 'every team should try Rust'" is gold. If research data is limited, extrapolate intelligently from their title/company/bio but set research_confidence to "low"."""
+Be EXTREMELY SPECIFIC and ACTIONABLE. Reference actual evidence from the research data."""
 
         result = await self._generate(prompt, schema=JUDGE_PROFILE_SCHEMA)
         if isinstance(result, dict) and result.get("name"):
@@ -341,7 +337,7 @@ HACKATHON DETAILS:
 JUDGE PANEL ({len(judges)} judges):
 {judges_payload}
 
-Generate 7-9 project ideas ranked by total likelihood to win given THIS specific judge panel and hackathon context. Be creative, specific, and strategic. Ideas should span different difficulty levels. Reference judges by name in why_this_wins and judge_appeal fields."""
+Generate 7-9 project ideas ranked by total likelihood to win given THIS specific judge panel and hackathon context."""
 
         logger.info(f"[final_analysis] Sending {len(judges)} judges to Gemini for final synthesis...")
         result = await self._generate(prompt, schema=FINAL_ANALYSIS_SCHEMA)
@@ -352,64 +348,28 @@ Generate 7-9 project ideas ranked by total likelihood to win given THIS specific
                      f"agg keys: {list(result.get('aggregate_stats', {}).keys())}")
         return result
 
-    async def verify_linkedin_match(self, name: str, company: str, title: str, linkedin_content: str) -> dict:
-        """Verify if a LinkedIn profile matches the judge we're looking for.
-        
-        CRITICAL: Must be strict to avoid false positives when multiple people have similar names.
-        Only confirm match if the profile clearly belongs to the exact person we're looking for.
-        """
-        # Extract first and last name for verification
+    async def verify_linkedin_match(self, name: str, company: str, title: str,
+                                     linkedin_content: str, linkedin_url: str = "") -> dict:
+        """Verify if a LinkedIn profile matches the judge. Simple and reliable."""
         name_parts = name.lower().split()
         first_name = name_parts[0] if name_parts else ""
         last_name = name_parts[-1] if len(name_parts) > 1 else ""
-        
-        prompt = f"""You are verifying if a LinkedIn profile belongs to a SPECIFIC person. Be STRICT - only confirm if this is definitely the right person.
 
-PERSON WE'RE LOOKING FOR:
-- Full Name: {name}
-- First Name: {first_name}
-- Last Name: {last_name}
-- Company: {company or "Unknown"}
-- Title/Role: {title or "Unknown"}
+        prompt = f"""Does this LinkedIn profile belong to {name}?
 
-LINKEDIN PROFILE CONTENT:
-{linkedin_content[:10000]}
+Expected: {name} at {company or "Unknown"} ({title or "Unknown"})
+URL: {linkedin_url or "Unknown"}
 
-CRITICAL VERIFICATION STEPS:
+Profile Content:
+{linkedin_content[:6000]}
 
-1. EXTRACT THE PROFILE OWNER'S NAME:
-   - Look for the main name displayed at the top of the profile
-   - Look for name in the URL or page title
-   - Check the "About" section for self-references
+Check:
+1. Does the profile show "{first_name}" AND "{last_name}" as the owner?
+2. Is "{company}" mentioned as a current/past employer?
+3. Is there any contradictory information?
 
-2. COMPARE NAMES (MOST IMPORTANT):
-   - Does the profile show "{first_name}" AND "{last_name}" together?
-   - If profile shows DIFFERENT first name → REJECT (wrong person)
-   - If profile shows DIFFERENT last name → REJECT (wrong person)
-   - Example: Looking for "Sumeet Jeswani", profile shows "Sumeet Kaur" → REJECT
-   - Example: Looking for "Lilly Jones", profile shows "Lilly Smith" → REJECT
-
-3. CHECK COMPANY/TITLE CONTEXT:
-   - If "{company}" provided: Is it mentioned as current or past employer?
-   - If "{title}" provided: Does experience section show this or similar role?
-   - Strong match: Name matches AND (company matches OR title matches)
-
-4. REJECTION CRITERIA (Return is_match=false if ANY apply):
-   - Profile shows a different person's name (even similar)
-   - Name appears only in "People also viewed" or connections
-   - Profile is mostly empty with no clear identifying information
-   - Location/industry completely mismatches with no explanation
-
-ACCEPTANCE CRITERIA (Return is_match=true if ALL apply):
-   - Profile clearly shows "{first_name}" and "{last_name}"
-   - No contradictory name information
-   - At least some professional context that could match
-
-DECISION:
-- HIGH confidence: Exact name match + supporting context (company/title/location)
-- MEDIUM confidence: Exact name match + limited but consistent context
-- LOW confidence: Name appears but unclear if it's the profile owner
-- REJECT: Any doubt about name match or clear mismatch"""
+Return is_match=true if the name clearly matches.
+Return is_match=false if the name doesn't match or it's clearly a different person."""
 
         result = await self._generate(prompt, schema=LINKEDIN_VERIFICATION_SCHEMA)
         if not isinstance(result, dict):
@@ -419,17 +379,13 @@ DECISION:
         confidence = result.get("confidence", "low")
         reasoning = result.get("reasoning", "")
         
-        # Post-processing: Double-check name match in content
+        # Verify names are actually in content
         if is_match:
             content_lower = linkedin_content.lower()
-            has_first = first_name in content_lower
-            has_last = last_name in content_lower
-            
-            if not (has_first and has_last):
-                # Gemini said match but names not found - likely error
+            if not (first_name in content_lower and last_name in content_lower):
                 is_match = False
                 confidence = "low"
-                reasoning = f"Post-processing rejection: Names ({first_name}, {last_name}) not found in content"
+                reasoning = "Names not found in content"
         
         return {
             "is_match": is_match,

@@ -6,15 +6,19 @@ from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 logger = logging.getLogger(__name__)
 
 # Max concurrent Playwright pages sharing the single browser
-_CRAWL_SEMAPHORE = asyncio.Semaphore(12)
+_CRAWL_SEMAPHORE = asyncio.Semaphore(20)
 
 _EMPTY_NAMES = {"unknown", "n/a", "none", "", "tbd", "tba"}
 _TRAILING_URL_PUNCT = ".,;:!?)]}\"'`"
 
 
 def _clean(val: str) -> str:
-    """Return empty string if val looks like a placeholder."""
-    return "" if (val or "").strip().lower() in _EMPTY_NAMES else val.strip()
+    """Return empty string if val looks like a placeholder. Strips quotes."""
+    v = (val or "").strip()
+    if v.lower() in _EMPTY_NAMES:
+        return ""
+    v = v.replace('"', '').replace('\u201c', '').replace('\u201d', '')
+    return re.sub(r'\s+', ' ', v).strip()
 
 
 def _name_tokens(name: str) -> list[str]:
@@ -89,7 +93,7 @@ def _extract_linkedin_photo(markdown: str) -> str:
     if not markdown:
         return ""
     photo_match = re.search(
-        r'!\[.*?\]\((https://media\.licdn\.com/dms/image/[^)]+)\)',
+        r'!\[.*?\]\((https://media\.licdn\.com/dms/image/[^)]+)',
         markdown,
     )
     if photo_match:
@@ -139,7 +143,7 @@ def _collect_search_targets(crawl_result: dict, max_results: int) -> list[str]:
     raw.extend(crawl_result.get("external_links", []))
     raw.extend(crawl_result.get("internal_links", []))
     markdown = crawl_result.get("content", "")
-    raw.extend(re.findall(r'https?://[^\s)\]"\']+', markdown))
+    raw.extend(re.findall(r'https?://[^\s)\]"\'"]+', markdown))
 
     out = []
     seen = set()
@@ -159,145 +163,162 @@ def _collect_search_targets(crawl_result: dict, max_results: int) -> list[str]:
     return out
 
 
+def _slug_raw_from_linkedin(url: str) -> str:
+    """Extract the raw slug string from a LinkedIn URL."""
+    try:
+        parsed = urlparse(url or "")
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) >= 2 and parts[0] in {"in", "pub"}:
+            return parts[1].lower().replace("%20", "-")
+    except Exception:
+        pass
+    return ""
+
+
 def _score_linkedin_candidate(url: str, content: str, name: str, company: str, title: str) -> int:
-    """Score a LinkedIn candidate - very lenient, let Gemini do final verification."""
+    """Score a LinkedIn candidate."""
     score = 0
     url_l = (url or "").lower()
     content_l = (content or "").lower()
-    head = content_l[:8000]  # Look at lots of content
+    head = content_l[:5000]
 
     # Base URL scoring
     if "/in/" in url_l:
         score += 20
-    else:
-        score -= 40
 
     name_toks = _name_tokens(name)
     slug_toks = _slug_tokens_from_linkedin(url_l)
+    slug_raw = _slug_raw_from_linkedin(url_l).lower()
     
-    # ===== SLUG MATCHING (bonus only - no penalty) =====
-    first_name_match = name_toks[0] in slug_toks if name_toks else False
-    last_name_match = name_toks[-1] in slug_toks if len(name_toks) > 1 else False
-    full_name_in_slug = len(name_toks) >= 2 and all(tok in slug_toks for tok in name_toks[:2])
-    
-    if full_name_in_slug:
-        score += 30  # Perfect slug match is good signal
-    elif first_name_match and last_name_match:
-        score += 20
-    elif first_name_match or last_name_match:
-        score += 10
-    # NO PENALTY for missing slug match - many use custom usernames like "lillysanovia"
-    
-    # ===== CONTENT NAME MATCHING (important but not required) =====
-    full_name = " ".join(name_toks[:2]) if len(name_toks) >= 2 else (name_toks[0] if name_toks else "")
     first_name = name_toks[0] if name_toks else ""
     last_name = name_toks[-1] if len(name_toks) > 1 else ""
+
+    # ===== SLUG ANALYSIS (highest priority) =====
+    
+    # First initial + last: sjeswani, kpfromer - VERY STRONG signal
+    first_initial_last = f"{first_name[0]}{last_name}" if (first_name and last_name) else ""
+    has_initials_slug = first_initial_last and first_initial_last == slug_raw
+    
+    # Full name patterns
+    full_name_hyphen = f"{first_name}-{last_name}" if (first_name and last_name) else ""
+    full_name_joined = f"{first_name}{last_name}" if (first_name and last_name) else ""
+    
+    # Check if slug IS exactly the pattern (not just contains)
+    has_full_slug_hyphen = slug_raw == full_name_hyphen
+    has_full_slug_joined = slug_raw == full_name_joined
+    
+    # Check for name tokens in slug
+    first_in_slug = first_name and (first_name in slug_toks or first_name in slug_raw)
+    last_in_slug = last_name and (last_name in slug_toks or last_name in slug_raw)
+    
+    # Score slug matches
+    if has_initials_slug:
+        score += 60  # Highest: exact initials+last match (sjeswani)
+    elif has_full_slug_hyphen or has_full_slug_joined:
+        score += 50  # High: exact name match
+    elif first_in_slug and last_in_slug:
+        score += 30
+    elif first_in_slug or last_in_slug:
+        score += 12
+    
+    # Penalize company-appended slugs VERY heavily
+    if company and first_name and last_name:
+        company_toks = _name_tokens(company)
+        if company_toks:
+            company_slug = company_toks[0].lower()
+            # Check if slug contains or ends with company name
+            if company_slug in slug_raw and company_slug not in [first_name, last_name]:
+                # This is a generated pattern like sumeet-jeswani-google
+                # Give it a MASSIVE penalty so it never wins over real profiles
+                score -= 50
+                
+    # Extra bonus for short, clean slugs (real profiles often have these)
+    if has_initials_slug or has_full_slug_hyphen or has_full_slug_joined:
+        # These are good patterns - check if they're clean (no company appended)
+        is_clean = True
+        if company and company_toks:
+            for tok in company_toks:
+                if tok.lower() in slug_raw and tok.lower() not in [first_name, last_name]:
+                    is_clean = False
+                    break
+        if is_clean:
+            score += 15  # Bonus for clean name-only slug
+    
+    # ===== CONTENT NAME MATCHING =====
+    full_name = f"{first_name} {last_name}".strip()
     
     if full_name and _contains_phrase(head, full_name):
-        score += 35  # Full name visible on profile is strong
-    elif first_name and last_name and first_name in head and last_name in head[:5000]:
         score += 25
+    elif first_name and last_name and first_name in head and last_name in head[:3000]:
+        score += 18
     else:
-        name_in_content = 0
         if first_name and first_name in head:
-            name_in_content += 1
+            score += 6
         if last_name and last_name in head:
-            name_in_content += 1
-        score += name_in_content * 8
+            score += 6
     
-    # ===== COMPANY MATCHING (bonus only) =====
-    company_toks = _name_tokens(company)[:5] if company else []
-    if company_toks:
+    # ===== COMPANY MATCHING =====
+    if company:
         company_lower = company.lower()
         if company_lower in head:
-            score += 25
+            score += 20
         else:
-            company_hits = sum(1 for tok in company_toks if tok in head)
-            if company_hits >= len(company_toks):
-                score += 18
-            elif company_hits >= max(1, len(company_toks) // 2):
-                score += 8
-    
-    # ===== TITLE MATCHING (bonus only) =====
-    title_toks = _name_tokens(title)[:5] if title else []
-    if title_toks:
-        title_lower = title.lower()
-        if title_lower in head:
-            score += 15
-        else:
-            title_hits = sum(1 for tok in title_toks if tok in head)
-            if title_hits >= len(title_toks):
-                score += 10
-            elif title_hits >= max(1, len(title_toks) // 2):
+            company_tokens = _name_tokens(company)[:3]
+            company_hits = sum(1 for tok in company_tokens if tok in head)
+            if company_hits >= len(company_tokens):
+                score += 12
+            elif company_hits >= 1:
                 score += 5
+    
+    # ===== TITLE MATCHING =====
+    if title:
+        title_tokens = _name_tokens(title)[:3]
+        title_hits = sum(1 for tok in title_tokens if tok in head)
+        if title_hits >= len(title_tokens):
+            score += 8
+        elif title_hits >= 1:
+            score += 3
 
     # Quality signals
     if "linkedin member" in content_l and len(content_l) < 600:
+        score -= 15
+    if len(content_l) < 200:
         score -= 10
-    if len(content_l) < 150:
-        score -= 20
-    if len(content_l) > 800:
+    if len(content_l) > 1000:
         score += 5
 
     return score
 
 
-def _is_linkedin_candidate_valid(url: str, content: str, name: str, company: str, title: str, score: int) -> bool:
-    """Validate a LinkedIn candidate - very lenient, pass to Gemini for final verification."""
-    if score < 8:  # Very low threshold - let Gemini do the real filtering
+def _is_linkedin_candidate_valid(url: str, content: str, name: str, score: int) -> bool:
+    """Basic validation - lenient."""
+    if score < 5:
         return False
-        
+    
     name_toks = _name_tokens(name)
-    slug_toks = _slug_tokens_from_linkedin(url)
-    content_l = (content or "").lower()
-    head = content_l[:8000]
-
-    # Must have at least SOME name evidence (very lenient)
     if len(name_toks) >= 2:
         first_name = name_toks[0]
         last_name = name_toks[-1]
-        full_name = " ".join(name_toks[:2])
+        head = (content or "").lower()[:3000]
+        slug_raw = _slug_raw_from_linkedin(url).lower()
         
-        # Accept if ANY name evidence exists
-        has_first_name = first_name in slug_toks or first_name in head
-        has_last_name = last_name in slug_toks or last_name in head
-        has_full_name = _contains_phrase(head, full_name)
+        has_first = first_name in head or first_name in slug_raw
+        has_last = last_name in head or last_name in slug_raw
         
-        # Very lenient - accept if either first OR last name found anywhere
-        if not (has_first_name or has_last_name or has_full_name):
+        if not (has_first or has_last):
             return False
-    elif len(name_toks) == 1:
-        if name_toks[0] not in slug_toks and name_toks[0] not in head[:3000]:
-            return False
-
-    # Only reject for very common names if we have zero context
-    common_last_names = {"smith", "johnson", "williams", "brown", "jones", "miller", "davis", 
-                         "garcia", "rodriguez", "wilson", "martinez", "anderson", "taylor",
-                         "thomas", "jackson", "white", "harris", "martin", "thompson", "moore"}
-    is_common_name = len(name_toks) >= 2 and name_toks[-1] in common_last_names
     
-    if is_common_name and company:
-        company_toks = _name_tokens(company)[:3]
-        # Even for common names, just need SOME company evidence
-        company_hits = sum(1 for tok in company_toks if tok in head) if company_toks else 0
-        
-        # Only reject common names if zero company evidence AND no full name in slug
-        if company_hits == 0 and not (name_toks[0] in slug_toks and name_toks[-1] in slug_toks):
-            # Still allow through - Gemini will verify
-            pass
-
     return True
 
 
 class HackathonCrawler:
-    """All web crawling via Crawl4AI — reuses a single browser instance."""
+    """Web crawler using Crawl4AI."""
 
     def __init__(self):
         self._crawler = None
         self._lock = asyncio.Lock()
 
     async def _get_crawler(self):
-        """Lazy-init a single AsyncWebCrawler (one Playwright browser)."""
         if self._crawler is None:
             async with self._lock:
                 if self._crawler is None:
@@ -316,7 +337,6 @@ class HackathonCrawler:
 
     async def _crawl_url(self, url: str, timeout: int = 30, wait_for: str = None,
                          js_code: str = None, content_limit: int = 10000) -> dict:
-        """Crawl a single URL using the shared browser, gated by semaphore."""
         async with _CRAWL_SEMAPHORE:
             try:
                 crawler = await self._get_crawler()
@@ -358,28 +378,399 @@ class HackathonCrawler:
         return {"content": "", "external_links": [], "internal_links": [],
                 "url": url, "success": False}
 
-    async def _search_duckduckgo(self, query: str, max_results: int = 6) -> list[str]:
-        """Use DuckDuckGo HTML search to get result URLs — no API key needed."""
-        search_url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
-        mirror_url = f"https://r.jina.ai/http://html.duckduckgo.com/html/?q={quote(query)}"
+    async def _search_google_jina(self, query: str, max_results: int = 6) -> list[str]:
+        """Search Google via jina.ai - returns LinkedIn URLs found in results."""
+        google_url = f"https://www.google.com/search?q={quote(query)}&num={max_results + 4}"
+        jina_url = f"https://r.jina.ai/{google_url}"
         try:
-            result = await self._crawl_url(search_url, timeout=20)
-            out = _collect_search_targets(result, max_results)
-            used_fallback = False
+            result = await self._crawl_url(jina_url, timeout=20, content_limit=20000)
+            content = result.get("content", "")
+            
+            # Extract LinkedIn URLs
+            urls = re.findall(r'https?://(?:[a-z]{2,3}\.)?linkedin\.com/in/[^\s)\]"\'<>]+', content)
+            
+            out = []
+            seen = set()
+            for u in urls:
+                cleaned = _normalize_candidate_url(u)
+                if cleaned and cleaned not in seen and _is_linkedin_profile_url(cleaned):
+                    norm = _normalize_linkedin_url(cleaned)
+                    if norm and norm not in seen:
+                        seen.add(norm)
+                        seen.add(cleaned)
+                        out.append(cleaned)
+                        if len(out) >= max_results:
+                            break
 
-            # DDG often returns anti-bot pages to direct crawlers. Use r.jina mirror fallback.
-            if not out:
-                used_fallback = True
-                mirrored = await self._crawl_url(mirror_url, timeout=30, content_limit=20000)
-                out = _collect_search_targets(mirrored, max_results)
-
-            logger.info(f"[ddg] query='{query[:80]}' results={len(out)} (fallback={'yes' if used_fallback else 'no'})")
+            logger.info(f"[search] '{query[:50]}' -> {len(out)} results")
             return out
-        except Exception:
+        except Exception as e:
+            logger.info(f"[search] failed: {e}")
             return []
 
+    async def _fetch_profile_content(self, url: str) -> dict:
+        """Fetch LinkedIn profile content via direct crawl."""
+        try:
+            result = await self._crawl_url(url, timeout=12, content_limit=5000)
+            content = result.get("content", "")
+            # Check if we got real content (not auth wall)
+            if len(content) > 300 and "Agree & Join LinkedIn" not in content:
+                return {
+                    "content": content,
+                    "photo_url": _extract_linkedin_photo(content),
+                    "success": True,
+                    "url": url,
+                }
+        except Exception:
+            pass
+        
+        return {"content": "", "photo_url": "", "success": False, "url": url}
+
+    @staticmethod
+    def _generate_linkedin_urls(name: str, company: str = "") -> list[str]:
+        """Generate candidate LinkedIn URLs - focus on high-quality patterns."""
+        parts = _name_tokens(name)
+        if not parts:
+            return []
+        base = "https://www.linkedin.com/in/"
+        urls = []
+
+        if len(parts) >= 2:
+            first, last = parts[0], parts[-1]
+            # High priority patterns (most common for real profiles)
+            urls.extend([
+                base + first[0] + last,           # sjeswani
+                base + first + "-" + last,        # sumeet-jeswani
+                base + first + last,              # sumeetjeswani
+                base + "".join(parts),            # sumeetkumarjeswani
+                base + "-".join(parts),           # sumeet-kumar-jeswani
+            ])
+            # Lower priority
+            urls.extend([
+                base + last,                      # jeswani
+                base + first,                     # sumeet
+                base + first + last[0],           # sumeetj
+            ])
+        elif len(parts) == 1:
+            urls.append(base + parts[0])
+
+        # Skip company-appended URLs - they're usually wrong patterns
+        # Real profiles with company in slug will be found via search
+
+        seen = set()
+        result = []
+        for u in urls:
+            if u not in seen:
+                seen.add(u)
+                result.append(u)
+        return result
+
+    @staticmethod
+    def _generate_name_variants(name: str) -> list[str]:
+        """Generate name variants for spelling variations."""
+        variants = []
+        parts = _name_tokens(name)
+        if len(parts) < 2:
+            return variants
+        
+        first, last = parts[0], parts[-1]
+        
+        # Known variations
+        last_variants = {
+            'malve': ['malave'],
+            'malave': ['malve'],
+        }
+        
+        if last in last_variants:
+            for variant in last_variants[last]:
+                variants.append(f"{first} {variant}".title())
+        
+        return variants
+
+    # Cache for hackathon page URL mappings
+    _url_cache = {}
+    _photo_cache = {}
+
+    async def _extract_judge_urls_from_page(self, page_url: str) -> dict:
+        """Extract judge name -> LinkedIn URL mappings from hackathon page."""
+        if page_url in self._url_cache:
+            return self._url_cache[page_url]
+        
+        page_content = await self.crawl_hackathon_page(page_url)
+        import re
+        
+        # Find all LinkedIn URLs and extract names from the same line
+        linkedin_pattern = r'https?://[^\s\)\]"\'<>]*linkedin\.com/in/[^\s\)\]"\'<>]+'
+        
+        judge_urls = {}
+        
+        for match in re.finditer(linkedin_pattern, page_content):
+            url = match.group(0)
+            pos = match.start()
+            
+            # Find the line containing this URL
+            line_start = page_content.rfind('\n', 0, pos) + 1
+            line_end = page_content.find('\n', pos)
+            if line_end == -1:
+                line_end = len(page_content)
+            
+            line = page_content[line_start:line_end]
+            
+            # Extract name: look for capitalized words at the start of the line
+            # Remove the URL part
+            line_without_url = line[:line.find(url)]
+            
+            # Remove 'View Bio' and similar text
+            line_clean = re.sub(r'View Bio.*$', '', line_without_url)
+            
+            # Extract name: look for 2-3 capitalized words at the start
+            # Handle names with optional quotes like Matt "Kelly" Williams
+            
+            # Try 3 words with optional quotes (e.g., "Matt \"Kelly\" Williams", "Megan La Grave")
+            name_match = re.match(r'^([A-Z][a-z]+\s+"?[A-Z][a-z]+"?\s+[A-Z][a-z]+)', line_clean)
+            if name_match:
+                name = name_match.group(1).replace('"', '')
+                judge_urls[name.lower()] = url
+            else:
+                # Try 2 words
+                name_match = re.match(r'^([A-Z][a-z]+\s+[A-Z][a-z]+)', line_clean)
+                if name_match:
+                    name = name_match.group(1)
+                    judge_urls[name.lower()] = url
+        
+        self._url_cache[page_url] = judge_urls
+        return judge_urls
+
+    async def _extract_judge_photos_from_page(self, page_url: str) -> dict:
+        """Extract judge name -> photo URL mappings from hackathon page."""
+        if page_url in self._photo_cache:
+            return self._photo_cache[page_url]
+        
+        page_content = await self.crawl_hackathon_page(page_url)
+        import re
+        from urllib.parse import urljoin
+        
+        judge_photos = {}
+        
+        # Pattern: Look for image URLs followed by judge name and LinkedIn URL
+        # The structure is: ![](image.png)Name TitleView Bio[](linkedin_url)
+        
+        # Find all image URLs
+        img_pattern = r'!\[\]\((https?://[^\)]+\.(?:png|jpg|jpeg|gif|webp))\)'
+        
+        for match in re.finditer(img_pattern, page_content, re.IGNORECASE):
+            img_url = match.group(1)
+            img_end = match.end()
+            
+            # Look at the text after this image (up to 300 chars)
+            context_end = min(len(page_content), img_end + 300)
+            context = page_content[img_end:context_end]
+            
+            # Strip leading whitespace/newlines
+            context = context.lstrip()
+            
+            # Extract name from this context
+            # Try 3-word names first
+            name_match = re.match(r'^([A-Z][a-z]+\s+"?[A-Z][a-z]+"?\s+[A-Z][a-z]+)', context)
+            if name_match:
+                name = name_match.group(1).replace('"', '')
+                judge_photos[name.lower()] = img_url
+            else:
+                # Try 2-word names
+                name_match = re.match(r'^([A-Z][a-z]+\s+[A-Z][a-z]+)', context)
+                if name_match:
+                    name = name_match.group(1)
+                    judge_photos[name.lower()] = img_url
+        
+        self._photo_cache[page_url] = judge_photos
+        return judge_photos
+
+    async def worker_linkedin(self, name: str, company: str = "", title: str = "",
+                               analyzer=None, hackathon_page_url: str = None) -> dict:
+        """Find LinkedIn profile - use hackathon page first, then search."""
+        _empty = {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
+        name, company, title = _clean(name), _clean(company), _clean(title)
+        if not name:
+            return _empty
+
+        linkedin_urls = []
+        seen_urls = set()
+        photo_url = ""  # Track photo URL from page
+
+        # === Phase 1: Extract from hackathon page if provided ===
+        if hackathon_page_url:
+            try:
+                judge_urls = await self._extract_judge_urls_from_page(hackathon_page_url)
+                judge_photos = await self._extract_judge_photos_from_page(hackathon_page_url)
+                
+                # Look for exact or fuzzy match
+                name_lower = name.lower()
+                name_parts = _name_tokens(name)
+                
+                if len(name_parts) >= 2:
+                    first, last = name_parts[0], name_parts[-1]
+                    
+                    # Try exact match first
+                    if name_lower in judge_urls:
+                        url = judge_urls[name_lower]
+                        norm = _normalize_linkedin_url(url)
+                        if norm:
+                            linkedin_urls.append(url)
+                            seen_urls.add(norm)
+                            logger.info(f"[linkedin] Exact match on page: {name} -> {url}")
+                            # Get photo if available
+                            if name_lower in judge_photos:
+                                photo_url = judge_photos[name_lower]
+                                logger.info(f"[linkedin] Found photo on page: {name} -> {photo_url}")
+                    else:
+                        # Try partial match (first or last name)
+                        for judge_name, url in judge_urls.items():
+                            if first in judge_name and last in judge_name:
+                                norm = _normalize_linkedin_url(url)
+                                if norm and norm not in seen_urls:
+                                    linkedin_urls.append(url)
+                                    seen_urls.add(norm)
+                                    logger.info(f"[linkedin] Partial match on page: {name} -> {url}")
+                                    # Get photo if available
+                                    if judge_name in judge_photos:
+                                        photo_url = judge_photos[judge_name]
+                                        logger.info(f"[linkedin] Found photo on page: {name} -> {photo_url}")
+                                    break
+                                    break
+            except Exception as e:
+                logger.warning(f"[linkedin] Failed to extract from hackathon page: {e}")
+
+        # === Phase 2: Search for LinkedIn profiles (if not found on page) ===
+        # ONLY search if we don't have a hackathon page URL
+        # If we have a hackathon page and the judge isn't on it, they likely don't have a LinkedIn
+        if not linkedin_urls and not hackathon_page_url:
+            queries = []
+            if company:
+                queries.append(f'"{name}" {company} linkedin')
+            queries.append(f'"{name}" site:linkedin.com/in')
+            
+            search_tasks = [self._search_google_jina(q, max_results=6) for q in queries[:2]]
+            search_results = await asyncio.gather(*search_tasks)
+            
+            for urls in search_results:
+                for u in urls:
+                    norm = _normalize_linkedin_url(u)
+                    if norm and norm not in seen_urls:
+                        seen_urls.add(norm)
+                        linkedin_urls.append(u)
+
+        # === Phase 3: Add direct URL patterns (if still not found and no hackathon page) ===
+        if not linkedin_urls and not hackathon_page_url:
+            direct_urls = self._generate_linkedin_urls(name, company)
+            
+            for variant in self._generate_name_variants(name):
+                direct_urls.extend(self._generate_linkedin_urls(variant, company))
+            
+            for u in direct_urls[:8]:
+                norm = _normalize_linkedin_url(u)
+                if norm and norm not in seen_urls:
+                    seen_urls.add(norm)
+                    linkedin_urls.append(u)
+
+        if not linkedin_urls:
+            return _empty
+
+        # === Phase 4: Fetch profile content ===
+        fetch_tasks = [self._fetch_profile_content(u) for u in linkedin_urls[:8]]
+        fetched_results = await asyncio.gather(*fetch_tasks)
+
+        # === Phase 5: Score candidates ===
+        candidates = []
+        for data in fetched_results:
+            if not data.get("success"):
+                continue
+            url = _normalize_linkedin_url(data.get("url", ""))
+            content = data.get("content", "")
+            if len(content) < 100:
+                continue
+
+            score = _score_linkedin_candidate(url, content, name, company, title)
+            if not _is_linkedin_candidate_valid(url, content, name, score):
+                continue
+
+            candidates.append({
+                "url": url,
+                "content": content[:5000],
+                "photo_url": data.get("photo_url", ""),
+                "score": score,
+            })
+
+        if not candidates:
+            # If we got URLs from hackathon page but couldn't fetch content,
+            # return the first one anyway (it's probably correct)
+            if linkedin_urls and hackathon_page_url:
+                return {
+                    "source": "linkedin",
+                    "content": "Profile found on hackathon page",
+                    "sources": [linkedin_urls[0]],
+                    "linkedin_url": _normalize_linkedin_url(linkedin_urls[0]),
+                    "photo_url": photo_url,
+                }
+            return _empty
+
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+
+        # === Phase 6: Gemini verification ===
+        if analyzer:
+            top = candidates[:3]
+            verify_tasks = [
+                analyzer.verify_linkedin_match(name, company, title, c["content"], c["url"])
+                for c in top
+            ]
+            verifications = await asyncio.gather(*verify_tasks, return_exceptions=True)
+
+            best_candidate = None
+            best_combined = -1
+            conf_weight = {"high": 300, "medium": 200, "low": 100}
+
+            for candidate, verification in zip(top, verifications):
+                if isinstance(verification, Exception) or not isinstance(verification, dict):
+                    continue
+                if not verification.get("is_match", False):
+                    continue
+                conf = conf_weight.get(verification.get("confidence", "low"), 0)
+                combined = conf + candidate["score"]
+                if combined > best_combined:
+                    best_combined = combined
+                    best_candidate = candidate
+
+            if best_candidate:
+                return {
+                    "source": "linkedin",
+                    "content": best_candidate["content"],
+                    "sources": [best_candidate["url"]],
+                    "linkedin_url": best_candidate["url"],
+                    "photo_url": photo_url or best_candidate.get("photo_url", ""),
+                }
+
+            # If we have candidates but Gemini rejected all, still return top if from hackathon page
+            if linkedin_urls and hackathon_page_url:
+                return {
+                    "source": "linkedin",
+                    "content": candidates[0]["content"],
+                    "sources": [candidates[0]["url"]],
+                    "linkedin_url": candidates[0]["url"],
+                    "photo_url": photo_url or candidates[0].get("photo_url", ""),
+                }
+
+            return _empty
+
+        top = candidates[0]
+        return {
+            "source": "linkedin",
+            "content": top["content"],
+            "sources": [c["url"] for c in candidates[:2]],
+            "linkedin_url": top["url"],
+            "photo_url": photo_url or top.get("photo_url", ""),
+        }
+
     async def crawl_hackathon_page(self, url: str) -> str:
-        """Crawl the main hackathon page. Handles both Devpost and generic pages."""
+        """Crawl the main hackathon page."""
         if "devpost.com" in url:
             js_scroll = """
             await new Promise(r => {
@@ -418,146 +809,24 @@ class HackathonCrawler:
 
         return content
 
-    # ── Worker 1: LinkedIn ────────────────────────────────────────────────
-
-    async def worker_linkedin(self, name: str, company: str = "", title: str = "",
-                               analyzer=None) -> dict:
-        """Find LinkedIn profile - FAST version with minimal API calls."""
-        name, company, title = _clean(name), _clean(company), _clean(title)
-        if not name:
-            return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
-
-        # Just ONE search query with name + company (or just name)
-        if company:
-            search_query = f'"{name}" {company} site:linkedin.com/in'
-        else:
-            search_query = f'"{name}" site:linkedin.com/in'
-        
-        urls = await self._search_duckduckgo(search_query, max_results=5)
-        linkedin_urls = [u for u in urls if _is_linkedin_profile_url(u)]
-        
-        if not linkedin_urls:
-            return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
-        
-        # Check only the top 3 URLs
-        candidates = []
-        seen_urls = set()
-        
-        for u in linkedin_urls[:3]:
-            normalized = _normalize_linkedin_url(u)
-            if not normalized or normalized in seen_urls:
-                continue
-            seen_urls.add(normalized)
-            
-            # Fast crawl with short timeout
-            data = await self._crawl_url(u, timeout=12, content_limit=4000)
-            if not isinstance(data, dict):
-                continue
-            
-            content = data.get("content", "")
-            if len(content) < 100:
-                continue
-            
-            # Score it
-            score = _score_linkedin_candidate(normalized, content, name, company, title)
-            if score < 15:  # Higher threshold - only good matches
-                continue
-            
-            photo_url = _extract_linkedin_photo(content)
-            candidates.append({
-                "url": normalized,
-                "content": content[:4000],
-                "photo_url": photo_url,
-                "score": score,
-            })
-        
-        if not candidates:
-            return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
-        
-        # Sort by score
-        candidates.sort(key=lambda x: x["score"], reverse=True)
-        
-        # With Gemini: verify only the top 2 candidates max
-        if analyzer:
-            # Verify top 2 candidates only
-            for candidate in candidates[:2]:
-                try:
-                    verification = await analyzer.verify_linkedin_match(
-                        name, company, title, candidate["content"]
-                    )
-                    if verification.get("is_match", False):
-                        return {
-                            "source": "linkedin",
-                            "content": candidate["content"],
-                            "sources": [candidate["url"]],
-                            "linkedin_url": candidate["url"],
-                            "photo_url": candidate["photo_url"],
-                        }
-                except Exception:
-                    continue
-            
-            # No candidate passed verification
-            return {"source": "linkedin", "content": "", "sources": [], "linkedin_url": "", "photo_url": ""}
-        
-        # No analyzer - return top candidate
-        top = candidates[0]
-        return {
-            "source": "linkedin",
-            "content": top["content"],
-            "sources": [c["url"] for c in candidates[:2]],
-            "linkedin_url": top["url"],
-            "photo_url": top["photo_url"],
-        }
-
-    # ── Worker 2: GitHub + personal site ──────────────────────────────────
-
     async def worker_github_personal(self, name: str, company: str = "") -> dict:
-        """Find GitHub profile, repos, and personal website/blog."""
+        """Find GitHub profile."""
         name, company = _clean(name), _clean(company)
         if not name:
             return {"source": "github_personal", "content": "", "sources": []}
+        
+        query = f'"{name}" site:github.com'
+        urls = await self._search_google_jina(query, max_results=4)
+        
         results = []
         sources = []
-
-        gh_query = f'"{name}" site:github.com'
-        site_query = f'"{name}" {company} personal website portfolio about'
-        gh_urls_task = self._search_duckduckgo(gh_query, max_results=5)
-        site_urls_task = self._search_duckduckgo(site_query, max_results=5)
-        gh_urls, site_urls = await asyncio.gather(gh_urls_task, site_urls_task)
-
-        crawl_targets = []
-
-        # GitHub profile pages
-        for url in gh_urls[:3]:
-            if "github.com/" in url and url.count("/") <= 4:
-                crawl_targets.append(("github_profile", url))
-
-        # GitHub repos (deeper links — shows what they actually build)
-        for url in gh_urls:
-            if "github.com/" in url and url.count("/") == 4:
-                crawl_targets.append(("github_repo", url))
-                if len([t for t in crawl_targets if t[0] == "github_repo"]) >= 2:
-                    break
-
-        # Personal sites
-        skip_domains = ["linkedin.com", "github.com", "twitter.com", "facebook.com",
-                        "duckduckgo.com", "instagram.com", "youtube.com"]
-        for url in site_urls[:4]:
-            if not any(x in url for x in skip_domains):
-                crawl_targets.append(("site", url))
-                if len([t for t in crawl_targets if t[0] == "site"]) >= 2:
-                    break
-
-        tasks = [self._crawl_url(u, timeout=20, content_limit=4000) for _, u in crawl_targets]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for (kind, url), data in zip(crawl_targets, crawled):
-            if isinstance(data, dict) and data.get("content") and len(data["content"]) > 100:
-                label = {"github_profile": "GitHub Profile",
-                         "github_repo": "GitHub Repo",
-                         "site": f"Personal Site"}[kind]
-                results.append(f"[{label}: {url}]\n{data['content'][:4000]}")
-                sources.append(url)
+        
+        for url in urls[:2]:
+            if "github.com/" in url:
+                data = await self._crawl_url(url, timeout=15, content_limit=3000)
+                if data.get("content") and len(data["content"]) > 100:
+                    results.append(f"[GitHub: {url}]\n{data['content'][:3000]}")
+                    sources.append(url)
 
         return {
             "source": "github_personal",
@@ -565,467 +834,202 @@ class HackathonCrawler:
             "sources": sources,
         }
 
-    # ── Worker 3: News, interviews, podcasts ──────────────────────────────
-
     async def worker_news_interviews(self, name: str, company: str = "") -> dict:
-        """Find news articles, interviews, podcasts, and press mentions."""
+        """Find news articles."""
         name, company = _clean(name), _clean(company)
         if not name:
             return {"source": "news_interviews", "content": "", "sources": []}
+        
+        query = f'"{name}" {company} interview news article'
+        urls = await self._search_google_jina(query, max_results=4)
+        
         results = []
         sources = []
-
-        queries = [
-            f'"{name}" {company} interview podcast',
-            f'"{name}" {company} techcrunch wired forbes verge article',
-            f'"{name}" keynote talk conference speaker',
-        ]
-
-        search_tasks = [self._search_duckduckgo(q, max_results=5) for q in queries]
-        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        all_urls: list[str] = []
-        for r in search_results:
-            if isinstance(r, list):
-                all_urls.extend(r)
-
-        seen = set()
-        unique_urls = []
-        skip_domains = ["linkedin.com", "duckduckgo.com", "twitter.com", "x.com",
-                        "facebook.com", "instagram.com"]
-        for url in all_urls:
-            if url not in seen and not any(x in url for x in skip_domains):
-                seen.add(url)
-                unique_urls.append(url)
-
-        tasks = [self._crawl_url(u, timeout=18, content_limit=4000) for u in unique_urls[:8]]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for url, r in zip(unique_urls[:8], crawled):
-            if isinstance(r, dict) and r.get("content") and len(r["content"]) > 200:
-                results.append(f"[News/Interview: {url}]\n{r['content'][:4000]}")
-                sources.append(url)
+        
+        for url in urls[:3]:
+            if "linkedin.com" not in url:
+                data = await self._crawl_url(url, timeout=15, content_limit=3000)
+                if data.get("content") and len(data["content"]) > 200:
+                    results.append(f"[Article: {url}]\n{data['content'][:3000]}")
+                    sources.append(url)
 
         return {
             "source": "news_interviews",
-            "content": "\n\n---\n\n".join(results[:5]),
-            "sources": sources[:5],
-        }
-
-    # ── Worker 4: Twitter/X + social media ────────────────────────────────
-
-    async def worker_social_media(self, name: str, company: str = "") -> dict:
-        """Find Twitter/X, Mastodon, Bluesky, and other social profiles."""
-        name, company = _clean(name), _clean(company)
-        if not name:
-            return {"source": "social_media", "content": "", "sources": []}
-        results = []
-        sources = []
-
-        queries = [
-            f'"{name}" {company} site:twitter.com OR site:x.com',
-            f'"{name}" {company} site:medium.com OR site:substack.com OR site:dev.to',
-            f'"{name}" {company} site:mastodon.social OR site:bsky.app',
-        ]
-
-        search_tasks = [self._search_duckduckgo(q, max_results=4) for q in queries]
-        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        all_urls: list[str] = []
-        for r in search_results:
-            if isinstance(r, list):
-                all_urls.extend(r)
-
-        seen = set()
-        unique_urls = []
-        for url in all_urls:
-            if url not in seen and "duckduckgo.com" not in url:
-                seen.add(url)
-                unique_urls.append(url)
-
-        tasks = [self._crawl_url(u, timeout=20, content_limit=5000) for u in unique_urls[:6]]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for url, r in zip(unique_urls[:6], crawled):
-            if isinstance(r, dict) and r.get("content") and len(r["content"]) > 100:
-                platform = "Twitter/X" if ("twitter.com" in url or "x.com" in url) else \
-                           "Medium" if "medium.com" in url else \
-                           "Substack" if "substack.com" in url else \
-                           "Dev.to" if "dev.to" in url else \
-                           "Social"
-                results.append(f"[{platform}: {url}]\n{r['content'][:5000]}")
-                sources.append(url)
-
-        return {
-            "source": "social_media",
-            "content": "\n\n---\n\n".join(results[:4]),
-            "sources": sources[:4],
-        }
-
-    # ── Worker 5: Academic papers + Google Scholar ─────────────────────────
-
-    async def worker_academic(self, name: str, company: str = "") -> dict:
-        """Find research papers, Google Scholar, patents, and academic work."""
-        name, company = _clean(name), _clean(company)
-        if not name:
-            return {"source": "academic", "content": "", "sources": []}
-        results = []
-        sources = []
-
-        queries = [
-            f'"{name}" site:scholar.google.com',
-            f'"{name}" research paper arxiv publication proceedings',
-            f'"{name}" {company} patent invention',
-            f'"{name}" site:researchgate.net OR site:semanticscholar.org',
-        ]
-
-        search_tasks = [self._search_duckduckgo(q, max_results=4) for q in queries]
-        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        all_urls: list[str] = []
-        for r in search_results:
-            if isinstance(r, list):
-                all_urls.extend(r)
-
-        seen = set()
-        unique_urls = []
-        skip_domains = ["duckduckgo.com", "linkedin.com", "twitter.com"]
-        for url in all_urls:
-            if url not in seen and not any(x in url for x in skip_domains):
-                seen.add(url)
-                unique_urls.append(url)
-
-        tasks = [self._crawl_url(u, timeout=20, content_limit=4000) for u in unique_urls[:6]]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for url, r in zip(unique_urls[:6], crawled):
-            if isinstance(r, dict) and r.get("content") and len(r["content"]) > 150:
-                label = "Google Scholar" if "scholar.google" in url else \
-                        "ArXiv" if "arxiv.org" in url else \
-                        "ResearchGate" if "researchgate" in url else \
-                        "Semantic Scholar" if "semanticscholar" in url else \
-                        "Academic"
-                results.append(f"[{label}: {url}]\n{r['content'][:4000]}")
-                sources.append(url)
-
-        return {
-            "source": "academic",
-            "content": "\n\n---\n\n".join(results[:4]),
-            "sources": sources[:4],
-        }
-
-    # ── Worker 6: Company / startup / investment info ─────────────────────
-
-    async def worker_company(self, name: str, company: str = "", title: str = "") -> dict:
-        """Research their company — Crunchbase, company website, funding, products."""
-        name, company, title = _clean(name), _clean(company), _clean(title)
-        results = []
-        sources = []
-
-        if not company:
-            return {"source": "company", "content": "", "sources": []}
-
-        queries = [
-            f'"{company}" about company products',
-            f'"{company}" site:crunchbase.com OR site:pitchbook.com',
-            f'"{company}" funding raised investors startup',
-            f'"{name}" "{company}" founded co-founder CEO CTO',
-        ]
-
-        search_tasks = [self._search_duckduckgo(q, max_results=4) for q in queries]
-        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        all_urls: list[str] = []
-        for r in search_results:
-            if isinstance(r, list):
-                all_urls.extend(r)
-
-        seen = set()
-        unique_urls = []
-        skip_domains = ["duckduckgo.com", "linkedin.com", "twitter.com", "facebook.com"]
-        for url in all_urls:
-            if url not in seen and not any(x in url for x in skip_domains):
-                seen.add(url)
-                unique_urls.append(url)
-
-        tasks = [self._crawl_url(u, timeout=20, content_limit=4000) for u in unique_urls[:6]]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for url, r in zip(unique_urls[:6], crawled):
-            if isinstance(r, dict) and r.get("content") and len(r["content"]) > 150:
-                label = "Crunchbase" if "crunchbase.com" in url else \
-                        "PitchBook" if "pitchbook.com" in url else \
-                        "Company Info"
-                results.append(f"[{label}: {url}]\n{r['content'][:4000]}")
-                sources.append(url)
-
-        return {
-            "source": "company",
-            "content": "\n\n---\n\n".join(results[:4]),
-            "sources": sources[:4],
-        }
-
-    # ── Worker 7: YouTube / conference talks / slides ─────────────────────
-
-    async def worker_talks_videos(self, name: str, company: str = "") -> dict:
-        """Find YouTube talks, conference presentations, SlideShare decks."""
-        name, company = _clean(name), _clean(company)
-        if not name:
-            return {"source": "talks_videos", "content": "", "sources": []}
-        results = []
-        sources = []
-
-        queries = [
-            f'"{name}" site:youtube.com talk OR keynote OR presentation',
-            f'"{name}" {company} site:slideshare.net OR site:speakerdeck.com',
-            f'"{name}" conference speaker presentation demo',
-        ]
-
-        search_tasks = [self._search_duckduckgo(q, max_results=4) for q in queries]
-        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        all_urls: list[str] = []
-        for r in search_results:
-            if isinstance(r, list):
-                all_urls.extend(r)
-
-        seen = set()
-        unique_urls = []
-        skip_domains = ["duckduckgo.com", "linkedin.com"]
-        for url in all_urls:
-            if url not in seen and not any(x in url for x in skip_domains):
-                seen.add(url)
-                unique_urls.append(url)
-
-        tasks = [self._crawl_url(u, timeout=20, content_limit=4000) for u in unique_urls[:6]]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for url, r in zip(unique_urls[:6], crawled):
-            if isinstance(r, dict) and r.get("content") and len(r["content"]) > 100:
-                label = "YouTube" if "youtube.com" in url or "youtu.be" in url else \
-                        "SlideShare" if "slideshare" in url else \
-                        "SpeakerDeck" if "speakerdeck" in url else \
-                        "Talk/Presentation"
-                results.append(f"[{label}: {url}]\n{r['content'][:4000]}")
-                sources.append(url)
-
-        return {
-            "source": "talks_videos",
-            "content": "\n\n---\n\n".join(results[:4]),
-            "sources": sources[:4],
-        }
-
-    # ── Worker 8: YouTube transcripts ─────────────────────────────────────
-
-    async def worker_youtube_transcripts(self, name: str, company: str = "") -> dict:
-        """Find YouTube videos featuring this person and pull transcripts."""
-        name, company = _clean(name), _clean(company)
-        if not name:
-            return {"source": "youtube_transcripts", "content": "", "sources": []}
-        results = []
-        sources = []
-
-        # Search for videos they appear in (interviews, panels, talks)
-        queries = [
-            f'"{name}" site:youtube.com',
-            f'"{name}" {company} youtube interview OR panel OR talk OR podcast',
-        ]
-
-        search_tasks = [self._search_duckduckgo(q, max_results=5) for q in queries]
-        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        all_urls: list[str] = []
-        for r in search_results:
-            if isinstance(r, list):
-                all_urls.extend(r)
-
-        # Deduplicate, keep only youtube URLs
-        seen = set()
-        yt_urls = []
-        for url in all_urls:
-            # Normalize youtube URLs to get video IDs
-            vid_id = self._extract_yt_id(url)
-            if vid_id and vid_id not in seen:
-                seen.add(vid_id)
-                yt_urls.append((vid_id, url))
-
-        # For each video, try to get the transcript via a free transcript service
-        for vid_id, original_url in yt_urls[:4]:
-            transcript = await self._get_youtube_transcript(vid_id)
-            if transcript and len(transcript) > 100:
-                # Also crawl the video page for title/description
-                page_data = await self._crawl_url(original_url, timeout=15, content_limit=2000)
-                page_info = page_data.get("content", "")[:500] if isinstance(page_data, dict) else ""
-
-                results.append(
-                    f"[YouTube Video: {original_url}]\n"
-                    f"Page Info: {page_info}\n\n"
-                    f"TRANSCRIPT (first 5000 chars):\n{transcript[:5000]}"
-                )
-                sources.append(original_url)
-                logger.info(f"[yt_transcript] {name}: got transcript for {vid_id} ({len(transcript)} chars)")
-            else:
-                logger.info(f"[yt_transcript] {name}: no transcript for {vid_id}")
-
-        return {
-            "source": "youtube_transcripts",
             "content": "\n\n---\n\n".join(results[:3]),
             "sources": sources[:3],
         }
 
-    def _extract_yt_id(self, url: str) -> str:
-        """Extract YouTube video ID from various URL formats."""
-        if not url:
-            return ""
-        # youtube.com/watch?v=ID
-        match = re.search(r"[?&]v=([a-zA-Z0-9_-]{11})", url)
-        if match:
-            return match.group(1)
-        # youtu.be/ID
-        match = re.search(r"youtu\.be/([a-zA-Z0-9_-]{11})", url)
-        if match:
-            return match.group(1)
-        # youtube.com/embed/ID
-        match = re.search(r"youtube\.com/embed/([a-zA-Z0-9_-]{11})", url)
-        if match:
-            return match.group(1)
-        return ""
-
-    async def _get_youtube_transcript(self, video_id: str) -> str:
-        """Try multiple free methods to get a YouTube transcript."""
-        # Method 1: Use a free transcript proxy site
-        transcript_urls = [
-            f"https://youtubetranscript.com/?v={video_id}",
-            f"https://www.youtube.com/watch?v={video_id}",
-        ]
-
-        for url in transcript_urls:
-            data = await self._crawl_url(url, timeout=20, content_limit=8000)
-            if isinstance(data, dict) and data.get("content"):
-                content = data["content"]
-                # If it looks like it has transcript-like content (lots of text lines)
-                if len(content) > 200:
-                    return content
-
-        return ""
-
-    # ── Worker 10: Podcasts, Hacker News, blogs ─────────────────────────
-
-    async def worker_podcasts_hn(self, name: str, company: str = "") -> dict:
-        """Find podcast appearances, Hacker News mentions, and blog posts."""
+    async def worker_social_media(self, name: str, company: str = "") -> dict:
+        """Find social profiles."""
         name, company = _clean(name), _clean(company)
         if not name:
-            return {"source": "podcasts_hn", "content": "", "sources": []}
+            return {"source": "social_media", "content": "", "sources": []}
+        
+        query = f'"{name}" {company} site:twitter.com OR site:x.com'
+        urls = await self._search_google_jina(query, max_results=4)
+        
         results = []
         sources = []
-
-        queries = [
-            f'"{name}" site:news.ycombinator.com',
-            f'"{name}" {company} podcast episode guest',
-            f'"{name}" site:hashnode.dev OR site:blog OR site:wordpress.com',
-            f'"{name}" {company} site:producthunt.com OR site:angellist.com',
-        ]
-
-        search_tasks = [self._search_duckduckgo(q, max_results=4) for q in queries]
-        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        all_urls: list[str] = []
-        for r in search_results:
-            if isinstance(r, list):
-                all_urls.extend(r)
-
-        seen = set()
-        unique_urls = []
-        skip_domains = ["duckduckgo.com", "linkedin.com", "twitter.com", "facebook.com"]
-        for url in all_urls:
-            if url not in seen and not any(x in url for x in skip_domains):
-                seen.add(url)
-                unique_urls.append(url)
-
-        tasks = [self._crawl_url(u, timeout=18, content_limit=4000) for u in unique_urls[:8]]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for url, r in zip(unique_urls[:8], crawled):
-            if isinstance(r, dict) and r.get("content") and len(r["content"]) > 150:
-                label = "Hacker News" if "ycombinator.com" in url else \
-                        "Product Hunt" if "producthunt.com" in url else \
-                        "Podcast" if any(x in url.lower() for x in ["podcast", "episode", "spotify", "apple.co"]) else \
-                        "Blog/Post"
-                results.append(f"[{label}: {url}]\n{r['content'][:4000]}")
+        
+        for url in urls[:3]:
+            data = await self._crawl_url(url, timeout=15, content_limit=3000)
+            if data.get("content") and len(data["content"]) > 100:
+                results.append(f"[Social: {url}]\n{data['content'][:3000]}")
                 sources.append(url)
 
         return {
-            "source": "podcasts_hn",
-            "content": "\n\n---\n\n".join(results[:5]),
-            "sources": sources[:5],
+            "source": "social_media",
+            "content": "\n\n---\n\n".join(results[:3]),
+            "sources": sources[:3],
         }
 
-    # ── Worker 9: General web search (catch-all) ──────────────────────────
+    async def worker_academic(self, name: str, company: str = "") -> dict:
+        """Find academic content."""
+        name, company = _clean(name), _clean(company)
+        if not name:
+            return {"source": "academic", "content": "", "sources": []}
+        
+        query = f'"{name}" site:scholar.google.com OR arxiv'
+        urls = await self._search_google_jina(query, max_results=4)
+        
+        results = []
+        sources = []
+        
+        for url in urls[:3]:
+            data = await self._crawl_url(url, timeout=15, content_limit=3000)
+            if data.get("content") and len(data["content"]) > 150:
+                results.append(f"[Academic: {url}]\n{data['content'][:3000]}")
+                sources.append(url)
+
+        return {
+            "source": "academic",
+            "content": "\n\n---\n\n".join(results[:3]),
+            "sources": sources[:3],
+        }
+
+    async def worker_company(self, name: str, company: str = "", title: str = "") -> dict:
+        """Research company."""
+        name, company, title = _clean(name), _clean(company), _clean(title)
+        if not company:
+            return {"source": "company", "content": "", "sources": []}
+
+        query = f'"{company}" about crunchbase'
+        urls = await self._search_google_jina(query, max_results=4)
+        
+        results = []
+        sources = []
+        
+        for url in urls[:3]:
+            if "linkedin.com" not in url:
+                data = await self._crawl_url(url, timeout=15, content_limit=3000)
+                if data.get("content") and len(data["content"]) > 150:
+                    results.append(f"[Company: {url}]\n{data['content'][:3000]}")
+                    sources.append(url)
+
+        return {
+            "source": "company",
+            "content": "\n\n---\n\n".join(results[:3]),
+            "sources": sources[:3],
+        }
+
+    async def worker_talks_videos(self, name: str, company: str = "") -> dict:
+        """Find talks and videos."""
+        name, company = _clean(name), _clean(company)
+        if not name:
+            return {"source": "talks_videos", "content": "", "sources": []}
+        
+        query = f'"{name}" {company} site:youtube.com'
+        urls = await self._search_google_jina(query, max_results=4)
+        
+        results = []
+        sources = []
+        
+        for url in urls[:3]:
+            data = await self._crawl_url(url, timeout=15, content_limit=3000)
+            if data.get("content") and len(data["content"]) > 100:
+                results.append(f"[Video: {url}]\n{data['content'][:3000]}")
+                sources.append(url)
+
+        return {
+            "source": "talks_videos",
+            "content": "\n\n---\n\n".join(results[:3]),
+            "sources": sources[:3],
+        }
+
+    async def worker_youtube_transcripts(self, name: str, company: str = "") -> dict:
+        """Find YouTube transcripts."""
+        name, company = _clean(name), _clean(company)
+        if not name:
+            return {"source": "youtube_transcripts", "content": "", "sources": []}
+        
+        query = f'"{name}" {company} site:youtube.com'
+        urls = await self._search_google_jina(query, max_results=3)
+        
+        results = []
+        sources = []
+        
+        for url in urls[:2]:
+            data = await self._crawl_url(url, timeout=15, content_limit=3000)
+            if data.get("content") and len(data["content"]) > 200:
+                results.append(f"[YouTube: {url}]\n{data['content'][:3000]}")
+                sources.append(url)
+
+        return {
+            "source": "youtube_transcripts",
+            "content": "\n\n---\n\n".join(results[:2]),
+            "sources": sources[:2],
+        }
+
+    async def worker_podcasts_hn(self, name: str, company: str = "") -> dict:
+        """Find podcast appearances and Hacker News mentions."""
+        name, company = _clean(name), _clean(company)
+        if not name:
+            return {"source": "podcasts_hn", "content": "", "sources": []}
+        
+        query = f'"{name}" {company} site:news.ycombinator.com OR podcast'
+        urls = await self._search_google_jina(query, max_results=4)
+        
+        results = []
+        sources = []
+        
+        for url in urls[:3]:
+            if "linkedin.com" not in url:
+                data = await self._crawl_url(url, timeout=15, content_limit=3000)
+                if data.get("content") and len(data["content"]) > 150:
+                    label = "Hacker News" if "ycombinator.com" in url else "Podcast"
+                    results.append(f"[{label}: {url}]\n{data['content'][:3000]}")
+                    sources.append(url)
+
+        return {
+            "source": "podcasts_hn",
+            "content": "\n\n---\n\n".join(results[:3]),
+            "sources": sources[:3],
+        }
 
     async def worker_general_search(self, name: str, company: str = "",
                                      title: str = "", already_seen: set = None) -> dict:
-        """Broad web search to catch anything the other workers missed."""
+        """Broad web search."""
         name, company, title = _clean(name), _clean(company), _clean(title)
         if not name:
             return {"source": "general_search", "content": "", "sources": []}
         if already_seen is None:
             already_seen = set()
 
+        query = f'"{name}" {company} bio profile'
+        urls = await self._search_google_jina(query, max_results=4)
+
         results = []
         sources = []
-
-        # Cast a wide net with different query angles
-        query_parts = [name]
-        if company:
-            query_parts.append(company)
-        if title:
-            query_parts.append(title)
-
-        queries = [
-            f'"{name}" {company} {title}',
-            f'"{name}" bio about profile',
-            f'"{name}" {company} blog OR opinion OR perspective',
-        ]
-
-        search_tasks = [self._search_duckduckgo(q, max_results=6) for q in queries]
-        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        all_urls: list[str] = []
-        for r in search_results:
-            if isinstance(r, list):
-                all_urls.extend(r)
-
-        # Deduplicate and filter out URLs we've already crawled in other workers
-        seen = set()
-        skip_domains = ["duckduckgo.com", "duck.com", "google.com", "bing.com",
-                        "yahoo.com", "facebook.com", "instagram.com"]
-        new_urls = []
-        for url in all_urls:
-            domain = urlparse(url).netloc
-            # Skip if we've seen this exact URL or domain was already covered
-            if url in seen or url in already_seen:
-                continue
-            if any(x in url for x in skip_domains):
-                continue
-            seen.add(url)
-            new_urls.append(url)
-
-        if not new_urls:
-            return {"source": "general_search", "content": "", "sources": []}
-
-        logger.info(f"[general_search] {name}: found {len(new_urls)} new URLs not seen by other workers")
-
-        tasks = [self._crawl_url(u, timeout=18, content_limit=4000) for u in new_urls[:8]]
-        crawled = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for url, r in zip(new_urls[:8], crawled):
-            if isinstance(r, dict) and r.get("content") and len(r["content"]) > 150:
-                domain = urlparse(url).netloc
-                results.append(f"[{domain}: {url}]\n{r['content'][:4000]}")
-                sources.append(url)
+        
+        for url in urls[:3]:
+            if url not in already_seen and "google.com" not in url:
+                data = await self._crawl_url(url, timeout=15, content_limit=3000)
+                if data.get("content") and len(data["content"]) > 150:
+                    results.append(f"[Web: {url}]\n{data['content'][:3000]}")
+                    sources.append(url)
 
         return {
             "source": "general_search",
-            "content": "\n\n---\n\n".join(results[:5]),
-            "sources": sources[:5],
+            "content": "\n\n---\n\n".join(results[:3]),
+            "sources": sources[:3],
         }

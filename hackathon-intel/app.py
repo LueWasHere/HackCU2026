@@ -89,7 +89,21 @@ def results(job_id: str):
         return jsonify({"error": "Not found"}), 404
     if row.get("results_json"):
         row["results"] = json.loads(row["results_json"])
+    if row.get("linkedin_urls_json"):
+        row["linkedin_urls"] = json.loads(row["linkedin_urls_json"])
     return jsonify(row)
+
+
+@app.route("/linkedin-urls/<job_id>")
+def linkedin_urls(job_id: str):
+    """Get just the LinkedIn URLs for a job."""
+    row = db.get_analysis(job_id)
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    urls = {}
+    if row.get("linkedin_urls_json"):
+        urls = json.loads(row["linkedin_urls_json"])
+    return jsonify({"linkedin_urls": urls, "hackathon_name": row.get("hackathon_name", "")})
 
 
 if __name__ == "__main__":

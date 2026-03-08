@@ -39,17 +39,6 @@
       overflow-x: hidden;
     }
 
-    /* Grain overlay */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-      pointer-events: none;
-      z-index: 1000;
-      opacity: 0.4;
-    }
-
     h1, h2, h3, h4, .font-syne { font-family: 'Syne', sans-serif; }
     .font-serif { font-family: 'Instrument Serif', serif; }
     .font-mono { font-family: 'JetBrains Mono', monospace; }
@@ -58,29 +47,38 @@
     .glow-accent { box-shadow: 0 0 30px rgba(0, 200, 160, 0.15); }
     .glow-amber { box-shadow: 0 0 20px rgba(240, 180, 41, 0.12); }
 
-    /* Grid bg */
-    .grid-bg {
-      background-image:
-        linear-gradient(var(--border) 1px, transparent 1px),
-        linear-gradient(90deg, var(--border) 1px, transparent 1px);
-      background-size: 40px 40px;
-      background-position: -1px -1px;
+    /* Hero background with floating orbs */
+    .hero-bg {
+      position: relative;
+      background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(0,200,160,0.06) 0%, transparent 60%),
+                  radial-gradient(ellipse 60% 50% at 80% 20%, rgba(77,166,255,0.04) 0%, transparent 50%),
+                  radial-gradient(ellipse 50% 40% at 20% 70%, rgba(155,127,232,0.04) 0%, transparent 50%);
     }
 
-    /* Scan line animation */
-    @keyframes scanline {
-      0% { transform: translateY(-100%); }
-      100% { transform: translateY(100vh); }
-    }
-
-    .scanline {
-      position: fixed;
-      left: 0; right: 0;
-      height: 2px;
-      background: linear-gradient(transparent, rgba(0,200,160,0.08), transparent);
-      animation: scanline 6s linear infinite;
+    .hero-bg::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle 300px at 70% 30%, rgba(0,200,160,0.07) 0%, transparent 100%),
+        radial-gradient(circle 250px at 30% 60%, rgba(155,127,232,0.05) 0%, transparent 100%);
+      animation: orbFloat 12s ease-in-out infinite alternate;
       pointer-events: none;
-      z-index: 999;
+    }
+
+    @keyframes orbFloat {
+      0% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(20px, -15px) scale(1.05); }
+      100% { transform: translate(-10px, 10px) scale(0.98); }
+    }
+
+    /* Subtle vignette for depth */
+    .hero-bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 50%, var(--bg) 100%);
+      pointer-events: none;
     }
 
     /* Input */
@@ -90,39 +88,72 @@
       color: var(--text);
       font-family: 'JetBrains Mono', monospace;
       font-size: 14px;
-      transition: all 0.2s;
+      transition: all 0.3s;
       outline: none;
     }
     .url-input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(0,200,160,0.1);
+      box-shadow: 0 0 0 3px rgba(0,200,160,0.1), 0 0 20px rgba(0,200,160,0.08);
     }
     .url-input::placeholder { color: var(--text3); }
 
+    /* Input wrapper glow */
+    .input-glow {
+      position: relative;
+    }
+    .input-glow::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(0,200,160,0.2), rgba(77,166,255,0.1), rgba(155,127,232,0.15));
+      opacity: 0;
+      transition: opacity 0.4s;
+      z-index: -1;
+      filter: blur(8px);
+    }
+    .input-glow:focus-within::before {
+      opacity: 1;
+    }
+
     /* Buttons */
     .btn-primary {
-      background: var(--accent);
+      background: linear-gradient(135deg, var(--accent), #00b090);
       color: #060b14;
       font-family: 'Syne', sans-serif;
       font-weight: 700;
       font-size: 13px;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      transition: all 0.2s;
+      transition: all 0.3s;
       cursor: pointer;
+      position: relative;
+      overflow: hidden;
     }
-    .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%);
+      transform: translateX(-100%);
+      transition: transform 0.6s;
+    }
+    .btn-primary:hover::after { transform: translateX(100%); }
+    .btn-primary:hover { box-shadow: 0 4px 20px rgba(0,200,160,0.3); transform: translateY(-1px); }
     .btn-primary:active { transform: translateY(0); }
-    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-primary:disabled::after { display: none; }
 
     /* Cards */
     .card {
-      background: var(--bg2);
+      background: rgba(11, 18, 32, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--border);
-      transition: border-color 0.2s;
+      transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
     }
-    .card:hover { border-color: var(--border2); }
-    .card-glow:hover { border-color: rgba(0,200,160,0.3); box-shadow: 0 0 20px rgba(0,200,160,0.05); }
+    .card:hover { border-color: var(--border2); transform: translateY(-1px); }
+    .card-glow:hover { border-color: rgba(0,200,160,0.3); box-shadow: 0 0 30px rgba(0,200,160,0.08); }
 
     /* Chips / tags */
     .chip {
@@ -281,7 +312,6 @@
 </head>
 
 <body>
-<div class="scanline"></div>
 
 <!-- ── History Sidebar ─────────────────────────────────────────────── -->
 <div id="history-overlay" class="fixed inset-0 bg-black/50 z-40 hidden" onclick="closeHistory()"></div>
@@ -294,7 +324,7 @@
 </div>
 
 <!-- ── Top Nav ─────────────────────────────────────────────────────── -->
-<nav class="fixed top-0 left-0 right-0 z-30 border-b border-[#1a2740] bg-[#060b14]/90 backdrop-blur-sm">
+<nav class="fixed top-0 left-0 right-0 z-30 border-b border-[#1a2740]/60 bg-[#060b14]/70 backdrop-blur-xl">
   <div class="max-w-7xl mx-auto px-6 h-12 flex items-center justify-between">
     <div class="flex items-center gap-3">
       <div class="w-6 h-6 rounded flex items-center justify-center" style="background: var(--accent)">
@@ -314,10 +344,11 @@
 <main class="pt-12 min-h-screen">
 
   <!-- Hero / Input Section -->
-  <section id="hero" class="grid-bg min-h-[calc(100vh-48px)] flex items-center justify-center px-6 transition-all duration-500">
+  <section id="hero" class="hero-bg min-h-[calc(100vh-48px)] flex items-center justify-center px-6 transition-all duration-500">
     <div class="max-w-2xl w-full text-center">
       <!-- Badge -->
-      <div class="inline-flex items-center gap-2 mb-8 px-3 py-1 rounded-full border border-[#1a2740] text-[11px] text-[#7a92b0]">
+      <div class="inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full text-[11px] text-[#7a92b0]"
+           style="background: rgba(0,200,160,0.04); border: 1px solid rgba(0,200,160,0.12);">
         <span class="w-1.5 h-1.5 rounded-full bg-[#00c8a0] pulse inline-block"></span>
         Deep judge intelligence — powered by Gemini + Crawl4AI
       </div>
@@ -325,7 +356,7 @@
       <!-- Headline -->
       <h1 class="font-syne font-extrabold mb-4 leading-tight" style="font-size: clamp(32px, 6vw, 64px); letter-spacing: -0.02em;">
         Know your judges.<br/>
-        <span class="font-serif italic" style="color: var(--accent)">Win the hackathon.</span>
+        <span class="font-serif italic" style="background: linear-gradient(135deg, #00c8a0, #4da6ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Win the hackathon.</span>
       </h1>
 
       <p class="text-[#7a92b0] mb-10 leading-relaxed" style="font-size: 14px; max-width: 520px; margin: 0 auto 40px;">
@@ -333,7 +364,7 @@
       </p>
 
       <!-- Input -->
-      <div class="flex gap-2 max-w-xl mx-auto">
+      <div class="input-glow flex gap-2 max-w-xl mx-auto rounded-lg">
         <input
           id="url-input"
           type="url"
@@ -346,10 +377,21 @@
         </button>
       </div>
 
-      <!-- Examples -->
-      <p class="mt-4 text-[11px] text-[#3d5470]">
-        Works with Devpost, MLH, Lablab.ai, Hack the North, and any event website
-      </p>
+      <!-- Platform icons row -->
+      <div class="mt-6 flex items-center justify-center gap-4 text-[11px] text-[#3d5470]">
+        <span class="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+          <span class="w-1 h-1 rounded-full bg-[#3d5470]"></span>Devpost
+        </span>
+        <span class="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+          <span class="w-1 h-1 rounded-full bg-[#3d5470]"></span>MLH
+        </span>
+        <span class="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+          <span class="w-1 h-1 rounded-full bg-[#3d5470]"></span>Lablab.ai
+        </span>
+        <span class="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+          <span class="w-1 h-1 rounded-full bg-[#3d5470]"></span>Any event site
+        </span>
+      </div>
     </div>
   </section>
 
@@ -406,6 +448,22 @@
       <button onclick="resetApp()" class="text-xs text-[#7a92b0] hover:text-[#00c8a0] border border-[#1a2740] hover:border-[#00c8a0]/30 px-4 py-2 rounded-lg transition-all">
         ← New Analysis
       </button>
+    </div>
+
+    <!-- Judge LinkedIn Profiles Card -->
+    <div id="linkedin-card" class="card rounded-xl p-5 mb-6 section-reveal" style="border-color: rgba(0,200,160,0.2)">
+      <div class="flex items-center gap-2 mb-4">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00c8a0" stroke-width="2">
+          <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+          <rect x="2" y="9" width="4" height="12"/>
+          <circle cx="4" cy="4" r="2"/>
+        </svg>
+        <p class="text-[10px] uppercase tracking-widest" style="color: var(--accent)">Judge LinkedIn Profiles</p>
+        <span id="linkedin-count" class="chip chip-accent text-[10px]">0</span>
+      </div>
+      <div id="linkedin-list" class="flex flex-wrap gap-2">
+        <!-- LinkedIn chips will be inserted here -->
+      </div>
     </div>
 
     <!-- Tabs -->
@@ -781,6 +839,9 @@ function showResults(data) {
   renderOverview(h, stats);
   renderJudges(judges);
   renderIdeas(ideas);
+  
+  // Render LinkedIn profiles card
+  renderLinkedInCard(judges);
 
   $('analyze-btn').disabled = false;
   $('analyze-btn').textContent = 'Analyze →';
@@ -946,6 +1007,26 @@ function renderJudges(judges) {
 
 function toggleJudge(card) {
   card.classList.toggle('open');
+}
+
+function renderLinkedInCard(judges) {
+  const linkedInJudges = judges.filter(j => validLinkedinProfile(j.linkedin_url));
+  $('linkedin-count').textContent = linkedInJudges.length;
+  
+  if (!linkedInJudges.length) {
+    $('linkedin-list').innerHTML = '<p class="text-xs text-[#3d5470]">No LinkedIn profiles found.</p>';
+    return;
+  }
+  
+  $('linkedin-list').innerHTML = linkedInJudges.map(j => {
+    const linkedin = validLinkedinProfile(j.linkedin_url);
+    return `<a href="${esc(linkedin)}" target="_blank" class="chip chip-blue hover:bg-[#00c8a0]/20 hover:border-[#00c8a0]/40 transition-all text-[11px] flex items-center gap-1.5">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="text-[#4da6ff]">
+        <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+      </svg>
+      ${esc(j.name)}
+    </a>`;
+  }).join('');
 }
 
 function renderIdeas(ideas) {

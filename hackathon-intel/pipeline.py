@@ -145,7 +145,7 @@ async def _async_pipeline(job_id: str, url: str, q: queue_module.Queue, db):
                  f"{', '.join(j.get('name', '?') for j in batch)} ---{RESET}")
 
             batch_tasks = [
-                _research_single_judge(judge, crawler, analyzer, q)
+                _research_single_judge(judge, crawler, analyzer, q, url)
                 for judge in batch
             ]
             batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
@@ -225,7 +225,7 @@ async def _async_pipeline(job_id: str, url: str, q: queue_module.Queue, db):
         await crawler.close()
 
 
-async def _research_single_judge(judge: dict, crawler, analyzer, q: queue_module.Queue) -> dict:
+async def _research_single_judge(judge: dict, crawler, analyzer, q: queue_module.Queue, hackathon_page_url: str = None) -> dict:
     """Run 10 workers for a single judge in parallel, then analyze."""
     name = judge.get("name", "Unknown")
     company = judge.get("company", "")
@@ -238,7 +238,7 @@ async def _research_single_judge(judge: dict, crawler, analyzer, q: queue_module
 
     # ── All 10 workers in parallel (including general search) ──────────────
     worker_results = await asyncio.gather(
-        crawler.worker_linkedin(name, company, title, analyzer=analyzer),
+        crawler.worker_linkedin(name, company, title, analyzer=analyzer, hackathon_page_url=hackathon_page_url),
         crawler.worker_github_personal(name, company),
         crawler.worker_news_interviews(name, company),
         crawler.worker_social_media(name, company),

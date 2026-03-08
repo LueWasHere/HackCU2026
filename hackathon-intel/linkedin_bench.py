@@ -79,15 +79,21 @@ def load_benchmark_data(csv_path: str) -> list[JudgeTestCase]:
 
 
 def normalize_url(url: str) -> str:
-    """Normalize URL for comparison."""
+    """Normalize LinkedIn URL for comparison — extract just the /in/slug part."""
     if not url:
         return ""
-    url = url.lower().replace('https://', '').replace('http://', '').replace('www.', '')
+    url = url.lower().strip()
+    url = url.replace('https://', '').replace('http://', '')
+    # Find the /in/ part and keep only that (strips country subdomains like in., uk., ca., cl.)
+    idx = url.find('/in/')
+    if idx >= 0:
+        return url[idx:].rstrip('/')
     return url.rstrip('/')
 
 
 async def test_single_judge(crawler: HackathonCrawler, analyzer: HackathonAnalyzer, 
-                            judge: JudgeTestCase, index: int, total: int) -> dict:
+                            judge: JudgeTestCase, index: int, total: int,
+                            hackathon_page_url: str = None) -> dict:
     """Test a single judge - designed for parallel execution."""
     title, company = parse_career_title(judge.title)
     
@@ -95,7 +101,8 @@ async def test_single_judge(crawler: HackathonCrawler, analyzer: HackathonAnalyz
         judge.name, 
         company, 
         title,
-        analyzer=analyzer
+        analyzer=analyzer,
+        hackathon_page_url=hackathon_page_url
     )
     
     found_url = result.get("linkedin_url", "")
@@ -132,9 +139,11 @@ async def test_single_judge(crawler: HackathonCrawler, analyzer: HackathonAnalyz
 
 
 class LinkedInBenchmark:
-    def __init__(self, use_gemini_verification: bool = False, csv_path: str = None):
+    def __init__(self, use_gemini_verification: bool = False, csv_path: str = None, 
+                 hackathon_page_url: str = None):
         self.use_gemini = use_gemini_verification
         self.csv_path = csv_path or os.path.join(os.path.dirname(__file__), "benchmarks.csv")
+        self.hackathon_page_url = hackathon_page_url
         self.crawler = None
         self.analyzer = None
         
@@ -159,25 +168,25 @@ class LinkedInBenchmark:
             mode = "WITH Gemini" if self.use_gemini else "WITHOUT Gemini"
             print("=" * 80)
             print(f"LINKEDIN BENCHMARK - {mode} - {len(test_cases)} judges")
+            if self.hackathon_page_url:
+                print(f"Using hackathon page: {self.hackathon_page_url}")
             print("=" * 80)
             print("Testing (results appear as completed):\n")
             
-            # Run all tests concurrently with semaphore to limit concurrency
-            semaphore = asyncio.Semaphore(3)  # Max 3 concurrent to avoid rate limits
-            
+            # Limit concurrency to avoid DDG/LinkedIn rate limiting
+            semaphore = asyncio.Semaphore(5)
+
             async def run_with_semaphore(judge, index, total):
                 async with semaphore:
                     return await test_single_judge(
-                        self.crawler, self.analyzer, judge, index, total
+                        self.crawler, self.analyzer, judge, index, total,
+                        self.hackathon_page_url
                     )
-            
-            # Create all tasks
+
             tasks = [
                 run_with_semaphore(judge, i+1, len(test_cases))
                 for i, judge in enumerate(test_cases)
             ]
-            
-            # Run all concurrently
             results = await asyncio.gather(*tasks)
             
             # Calculate statistics
@@ -228,12 +237,18 @@ async def main():
     """Main entry point - runs benchmark fast."""
     use_gemini = bool(os.environ.get("GEMINI_API_KEY"))
     
+    # Check for hackathon page URL from command line or use default
+    hackathon_url = None
+    if len(sys.argv) > 1:
+        hackathon_url = sys.argv[1]
+    
     if use_gemini:
         print("Note: Using Gemini verification (fast parallel mode)\n")
     else:
         print("Note: No Gemini - running basic mode\n")
     
-    benchmark = LinkedInBenchmark(use_gemini_verification=use_gemini)
+    benchmark = LinkedInBenchmark(use_gemini_verification=use_gemini, 
+                                   hackathon_page_url=hackathon_url)
     await benchmark.run()
 
 
